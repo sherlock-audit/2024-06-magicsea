@@ -1,0 +1,16 @@
+{
+  "name": "magicsea-staking",
+  "version": "1.0.0",
+  "repository": "git@github_metropolis:metropolis-exchange/magicsea-staking.git",
+  "author": "0xhans1 <0xhans1@gmail.com>",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "sync-farms" : "node js/sync-farm.js",
+    "start-voting-period" : "node js/start-voting-period.js"
+  },
+  "dependencies": {
+    "dotenv": "16.0.2",
+    "ethers": "5.7.1"
+  }
+}
