@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+
+import {SafeERC20, IERC20} from "openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
+// Rewarder similuar to merchant moe
+
+// hooks for deposit/withraw e.g. for zapping, nft access only or boosting...
+contract MasterchefV2 {
+
+    using SafeERC20 for IERC20;
+    using SafeERC20 for ILum;
+    using Math for uint256;
+    using Rewarder for Rewarder.Parameter;
+    using Amounts for Amounts.Parameter;
+
+    address private _treasury;
+
+    Farm[] private _farms;
+
+    uint256 private _lumPerSecond;
+
+
+    IDepositOnBehalf depositOnBehalf;
+
+
+    function deposit() {
+        // Hooks.beforeDeposit()
+    }
+
+    function depositOnBehalf () onlyDepositOnBehalf {
+
+    }
+
+    function withdrawOnBehalf () onlyWithdrawOnBehalf {
+
+    }
+
+
+    
+    
+
+
+}

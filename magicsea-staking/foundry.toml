@@ -1,0 +1,23 @@
+[profile.default]
+src = 'src'
+out = 'out'
+libs = ['lib']
+optimizer = true
+optimizer_runs = 800
+solc = '0.8.20'
+fs_permissions = [{ access = "read", path = "./"}]
+
+[fuzz]
+runs = 1024
+
+[rpc_endpoints]
+shimmer_testnet= "${RPC_SHIMMER_TESTNET_URL}"
+shimmer = "${RPC_SHIMMER_URL}"
+iota_testnet = "${RPC_IOTA_TESTNET_URL}"
+
+[etherscan]
+shimmer_testnet = { key = "API_KEY", chain = 1073, url = "https://explorer.evm.testnet.shimmer.network/api" }
+shimmer = { key = "API_KEY", chain = 148, url = "https://explorer.evm.shimmer.network/api" }
+iota_testnet = { key = "API_KEY", chain = 1075, url = "https://explorer.evm.testnet.iotaledger.net/api" }
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
