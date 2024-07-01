@@ -1,8 +1,0 @@
-{
-    "solidity.packageDefaultDependenciesContractsDirectory": [
-      "src",
-      "script"
-    ],
-    "solidity.packageDefaultDependenciesDirectory": "lib",
-    "solidity.compileUsingRemoteVersion": "v0.8.20"
-  }
