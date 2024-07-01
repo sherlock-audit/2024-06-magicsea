@@ -1,0 +1,15 @@
+{
+    "iota_testnet": {
+        "farmLens": "0x4967F1D0429D3AF5BED571B2C0F93483454A4147",
+        "masterChef": "0x9112a7Ae4a5f03aC1CB1306de3a591fCa380816D",
+        "voter": "0xad9E54D5293D0bE0454e7903D8e07113F77aC7A3",
+        "lbHooksManager": "0xe31674Eb2074840134D065Ef08312E3F8a413c58",
+        "lbHooksLens": "0xf555563A71532D6995183a2336f4726aaFBaB2D1",
+        "rewardRangePerBinStep" : {
+            "1" : [-1, 1],
+            "25" : [-5, 5],
+            "30" : [-5, 5]
+        },
+        "defaultRange" : [-5, 5]
+    }
+}

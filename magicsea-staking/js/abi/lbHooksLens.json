@@ -1,0 +1,1221 @@
+[
+    {
+        "type": "constructor",
+        "inputs": [
+            {
+                "name": "lbHooksManager",
+                "type": "address",
+                "internalType": "address"
+            },
+            {
+                "name": "masterChef",
+                "type": "address",
+                "internalType": "address"
+            }
+        ],
+        "stateMutability": "nonpayable"
+    },
+    {
+        "type": "function",
+        "name": "getActiveId",
+        "inputs": [
+            {
+                "name": "pair",
+                "type": "address",
+                "internalType": "address"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getBatchHooksData",
+        "inputs": [
+            {
+                "name": "pairs",
+                "type": "address[]",
+                "internalType": "address[]"
+            },
+            {
+                "name": "user",
+                "type": "address",
+                "internalType": "address"
+            },
+            {
+                "name": "ids",
+                "type": "uint256[][]",
+                "internalType": "uint256[][]"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "rewarderData",
+                "type": "tuple[]",
+                "internalType": "struct LBHooksLens.HooksRewarderData[]",
+                "components": [
+                    {
+                        "name": "hooksParameters",
+                        "type": "tuple",
+                        "internalType": "struct Hooks.Parameters",
+                        "components": [
+                            {
+                                "name": "hooks",
+                                "type": "address",
+                                "internalType": "address"
+                            },
+                            {
+                                "name": "beforeSwap",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterSwap",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeFlashLoan",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterFlashLoan",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeMint",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterMint",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeBurn",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterBurn",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeBatchTransferFrom",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterBatchTransferFrom",
+                                "type": "bool",
+                                "internalType": "bool"
+                            }
+                        ]
+                    },
+                    {
+                        "name": "parameters",
+                        "type": "tuple",
+                        "internalType": "struct LBHooksLens.Parameters",
+                        "components": [
+                            {
+                                "name": "hooksType",
+                                "type": "uint8",
+                                "internalType": "enum ILBHooksManager.LBHooksType"
+                            },
+                            {
+                                "name": "rewardToken",
+                                "type": "tuple",
+                                "internalType": "struct LBHooksLens.Token",
+                                "components": [
+                                    {
+                                        "name": "token",
+                                        "type": "address",
+                                        "internalType": "address"
+                                    },
+                                    {
+                                        "name": "decimals",
+                                        "type": "uint256",
+                                        "internalType": "uint256"
+                                    },
+                                    {
+                                        "name": "symbol",
+                                        "type": "string",
+                                        "internalType": "string"
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "pid",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "moePerSecond",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "activeId",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "rangeStart",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "rangeEnd",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "pendingRewards",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "rewardPerSecond",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "lastUpdateTimestamp",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "endTimestamp",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "remainingRewards",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "isStarted",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "isEnded",
+                                "type": "bool",
+                                "internalType": "bool"
+                            }
+                        ]
+                    },
+                    {
+                        "name": "activeId",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            },
+            {
+                "name": "extraRewarderData",
+                "type": "tuple[]",
+                "internalType": "struct LBHooksLens.HooksRewarderData[]",
+                "components": [
+                    {
+                        "name": "hooksParameters",
+                        "type": "tuple",
+                        "internalType": "struct Hooks.Parameters",
+                        "components": [
+                            {
+                                "name": "hooks",
+                                "type": "address",
+                                "internalType": "address"
+                            },
+                            {
+                                "name": "beforeSwap",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterSwap",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeFlashLoan",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterFlashLoan",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeMint",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterMint",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeBurn",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterBurn",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeBatchTransferFrom",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterBatchTransferFrom",
+                                "type": "bool",
+                                "internalType": "bool"
+                            }
+                        ]
+                    },
+                    {
+                        "name": "parameters",
+                        "type": "tuple",
+                        "internalType": "struct LBHooksLens.Parameters",
+                        "components": [
+                            {
+                                "name": "hooksType",
+                                "type": "uint8",
+                                "internalType": "enum ILBHooksManager.LBHooksType"
+                            },
+                            {
+                                "name": "rewardToken",
+                                "type": "tuple",
+                                "internalType": "struct LBHooksLens.Token",
+                                "components": [
+                                    {
+                                        "name": "token",
+                                        "type": "address",
+                                        "internalType": "address"
+                                    },
+                                    {
+                                        "name": "decimals",
+                                        "type": "uint256",
+                                        "internalType": "uint256"
+                                    },
+                                    {
+                                        "name": "symbol",
+                                        "type": "string",
+                                        "internalType": "string"
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "pid",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "moePerSecond",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "activeId",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "rangeStart",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "rangeEnd",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "pendingRewards",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "rewardPerSecond",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "lastUpdateTimestamp",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "endTimestamp",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "remainingRewards",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "isStarted",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "isEnded",
+                                "type": "bool",
+                                "internalType": "bool"
+                            }
+                        ]
+                    },
+                    {
+                        "name": "activeId",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getExtraHooks",
+        "inputs": [
+            {
+                "name": "rewarder",
+                "type": "address",
+                "internalType": "address"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "tuple",
+                "internalType": "struct Hooks.Parameters",
+                "components": [
+                    {
+                        "name": "hooks",
+                        "type": "address",
+                        "internalType": "address"
+                    },
+                    {
+                        "name": "beforeSwap",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "afterSwap",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "beforeFlashLoan",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "afterFlashLoan",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "beforeMint",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "afterMint",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "beforeBurn",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "afterBurn",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "beforeBatchTransferFrom",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "afterBatchTransferFrom",
+                        "type": "bool",
+                        "internalType": "bool"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getHooks",
+        "inputs": [
+            {
+                "name": "pair",
+                "type": "address",
+                "internalType": "address"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "tuple",
+                "internalType": "struct Hooks.Parameters",
+                "components": [
+                    {
+                        "name": "hooks",
+                        "type": "address",
+                        "internalType": "address"
+                    },
+                    {
+                        "name": "beforeSwap",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "afterSwap",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "beforeFlashLoan",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "afterFlashLoan",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "beforeMint",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "afterMint",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "beforeBurn",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "afterBurn",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "beforeBatchTransferFrom",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "afterBatchTransferFrom",
+                        "type": "bool",
+                        "internalType": "bool"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getHooksData",
+        "inputs": [
+            {
+                "name": "pair",
+                "type": "address",
+                "internalType": "address"
+            },
+            {
+                "name": "user",
+                "type": "address",
+                "internalType": "address"
+            },
+            {
+                "name": "ids",
+                "type": "uint256[]",
+                "internalType": "uint256[]"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "rewarderData",
+                "type": "tuple",
+                "internalType": "struct LBHooksLens.HooksRewarderData",
+                "components": [
+                    {
+                        "name": "hooksParameters",
+                        "type": "tuple",
+                        "internalType": "struct Hooks.Parameters",
+                        "components": [
+                            {
+                                "name": "hooks",
+                                "type": "address",
+                                "internalType": "address"
+                            },
+                            {
+                                "name": "beforeSwap",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterSwap",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeFlashLoan",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterFlashLoan",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeMint",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterMint",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeBurn",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterBurn",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeBatchTransferFrom",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterBatchTransferFrom",
+                                "type": "bool",
+                                "internalType": "bool"
+                            }
+                        ]
+                    },
+                    {
+                        "name": "parameters",
+                        "type": "tuple",
+                        "internalType": "struct LBHooksLens.Parameters",
+                        "components": [
+                            {
+                                "name": "hooksType",
+                                "type": "uint8",
+                                "internalType": "enum ILBHooksManager.LBHooksType"
+                            },
+                            {
+                                "name": "rewardToken",
+                                "type": "tuple",
+                                "internalType": "struct LBHooksLens.Token",
+                                "components": [
+                                    {
+                                        "name": "token",
+                                        "type": "address",
+                                        "internalType": "address"
+                                    },
+                                    {
+                                        "name": "decimals",
+                                        "type": "uint256",
+                                        "internalType": "uint256"
+                                    },
+                                    {
+                                        "name": "symbol",
+                                        "type": "string",
+                                        "internalType": "string"
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "pid",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "moePerSecond",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "activeId",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "rangeStart",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "rangeEnd",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "pendingRewards",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "rewardPerSecond",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "lastUpdateTimestamp",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "endTimestamp",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "remainingRewards",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "isStarted",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "isEnded",
+                                "type": "bool",
+                                "internalType": "bool"
+                            }
+                        ]
+                    },
+                    {
+                        "name": "activeId",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            },
+            {
+                "name": "extraRewarderData",
+                "type": "tuple",
+                "internalType": "struct LBHooksLens.HooksRewarderData",
+                "components": [
+                    {
+                        "name": "hooksParameters",
+                        "type": "tuple",
+                        "internalType": "struct Hooks.Parameters",
+                        "components": [
+                            {
+                                "name": "hooks",
+                                "type": "address",
+                                "internalType": "address"
+                            },
+                            {
+                                "name": "beforeSwap",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterSwap",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeFlashLoan",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterFlashLoan",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeMint",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterMint",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeBurn",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterBurn",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "beforeBatchTransferFrom",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "afterBatchTransferFrom",
+                                "type": "bool",
+                                "internalType": "bool"
+                            }
+                        ]
+                    },
+                    {
+                        "name": "parameters",
+                        "type": "tuple",
+                        "internalType": "struct LBHooksLens.Parameters",
+                        "components": [
+                            {
+                                "name": "hooksType",
+                                "type": "uint8",
+                                "internalType": "enum ILBHooksManager.LBHooksType"
+                            },
+                            {
+                                "name": "rewardToken",
+                                "type": "tuple",
+                                "internalType": "struct LBHooksLens.Token",
+                                "components": [
+                                    {
+                                        "name": "token",
+                                        "type": "address",
+                                        "internalType": "address"
+                                    },
+                                    {
+                                        "name": "decimals",
+                                        "type": "uint256",
+                                        "internalType": "uint256"
+                                    },
+                                    {
+                                        "name": "symbol",
+                                        "type": "string",
+                                        "internalType": "string"
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "pid",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "moePerSecond",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "activeId",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "rangeStart",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "rangeEnd",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "pendingRewards",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "rewardPerSecond",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "lastUpdateTimestamp",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "endTimestamp",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "remainingRewards",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "isStarted",
+                                "type": "bool",
+                                "internalType": "bool"
+                            },
+                            {
+                                "name": "isEnded",
+                                "type": "bool",
+                                "internalType": "bool"
+                            }
+                        ]
+                    },
+                    {
+                        "name": "activeId",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getLBHooksType",
+        "inputs": [
+            {
+                "name": "rewarder",
+                "type": "address",
+                "internalType": "address"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint8",
+                "internalType": "enum ILBHooksManager.LBHooksType"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getLumPerSecond",
+        "inputs": [
+            {
+                "name": "pid",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getParametersOf",
+        "inputs": [
+            {
+                "name": "hooks",
+                "type": "address",
+                "internalType": "address"
+            },
+            {
+                "name": "user",
+                "type": "address",
+                "internalType": "address"
+            },
+            {
+                "name": "ids",
+                "type": "uint256[]",
+                "internalType": "uint256[]"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "parameters",
+                "type": "tuple",
+                "internalType": "struct LBHooksLens.Parameters",
+                "components": [
+                    {
+                        "name": "hooksType",
+                        "type": "uint8",
+                        "internalType": "enum ILBHooksManager.LBHooksType"
+                    },
+                    {
+                        "name": "rewardToken",
+                        "type": "tuple",
+                        "internalType": "struct LBHooksLens.Token",
+                        "components": [
+                            {
+                                "name": "token",
+                                "type": "address",
+                                "internalType": "address"
+                            },
+                            {
+                                "name": "decimals",
+                                "type": "uint256",
+                                "internalType": "uint256"
+                            },
+                            {
+                                "name": "symbol",
+                                "type": "string",
+                                "internalType": "string"
+                            }
+                        ]
+                    },
+                    {
+                        "name": "pid",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    },
+                    {
+                        "name": "moePerSecond",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    },
+                    {
+                        "name": "activeId",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    },
+                    {
+                        "name": "rangeStart",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    },
+                    {
+                        "name": "rangeEnd",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    },
+                    {
+                        "name": "pendingRewards",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    },
+                    {
+                        "name": "rewardPerSecond",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    },
+                    {
+                        "name": "lastUpdateTimestamp",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    },
+                    {
+                        "name": "endTimestamp",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    },
+                    {
+                        "name": "remainingRewards",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    },
+                    {
+                        "name": "isStarted",
+                        "type": "bool",
+                        "internalType": "bool"
+                    },
+                    {
+                        "name": "isEnded",
+                        "type": "bool",
+                        "internalType": "bool"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getPendingRewards",
+        "inputs": [
+            {
+                "name": "rewarder",
+                "type": "address",
+                "internalType": "address"
+            },
+            {
+                "name": "account",
+                "type": "address",
+                "internalType": "address"
+            },
+            {
+                "name": "ids",
+                "type": "uint256[]",
+                "internalType": "uint256[]"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getPid",
+        "inputs": [
+            {
+                "name": "rewarder",
+                "type": "address",
+                "internalType": "address"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getRemainingRewards",
+        "inputs": [
+            {
+                "name": "extraRewarder",
+                "type": "address",
+                "internalType": "address"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getRewardToken",
+        "inputs": [
+            {
+                "name": "rewarder",
+                "type": "address",
+                "internalType": "address"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "rewardToken",
+                "type": "tuple",
+                "internalType": "struct LBHooksLens.Token",
+                "components": [
+                    {
+                        "name": "token",
+                        "type": "address",
+                        "internalType": "address"
+                    },
+                    {
+                        "name": "decimals",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    },
+                    {
+                        "name": "symbol",
+                        "type": "string",
+                        "internalType": "string"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getRewardedRange",
+        "inputs": [
+            {
+                "name": "rewarder",
+                "type": "address",
+                "internalType": "address"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            },
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getRewarderParameter",
+        "inputs": [
+            {
+                "name": "extraRewarder",
+                "type": "address",
+                "internalType": "address"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            },
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            },
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "view"
+    }
+]

@@ -10,3 +10,6 @@
 [submodule "magicsea-staking/lib/solmate"]
 	path = magicsea-staking/lib/solmate
 	url = https://github.com/transmissions11/solmate
+[submodule "magicsea-staking/lib/joe-v2"]
+	path = magicsea-staking/lib/joe-v2
+	url = https://github.com/traderjoe-xyz/joe-v2
