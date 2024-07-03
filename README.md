@@ -102,6 +102,7 @@ ___
 - [magicsea-staking/src/libraries/ImmutableClone.sol](magicsea-staking/src/libraries/ImmutableClone.sol)
 - [magicsea-staking/src/libraries/Math.sol](magicsea-staking/src/libraries/Math.sol)
 - [magicsea-staking/src/libraries/Rewarder.sol](magicsea-staking/src/libraries/Rewarder.sol)
+- [magicsea-staking/src/libraries/Rewarder2.sol](magicsea-staking/src/libraries/Rewarder2.sol)
 - [magicsea-staking/src/rewarders/BaseRewarder.sol](magicsea-staking/src/rewarders/BaseRewarder.sol)
 - [magicsea-staking/src/rewarders/BribeRewarder.sol](magicsea-staking/src/rewarders/BribeRewarder.sol)
 - [magicsea-staking/src/rewarders/MasterChefRewarder.sol](magicsea-staking/src/rewarders/MasterChefRewarder.sol)
