@@ -65,12 +65,12 @@ interface IVoter {
 
     function getPoolVotesPerPeriod(uint256 periodId, address pool) external view returns (uint256);
 
-    function getUserBribeRewaderAt(uint256 period, uint256 tokenId, uint256 index)
+    function getUserBribeRewaderAt(uint256 period, address account, uint256 index)
         external
         view
         returns (IBribeRewarder);
 
-    function getUserBribeRewarderLength(uint256 period, uint256 tokenId) external view returns (uint256);
+    function getUserBribeRewarderLength(uint256 period, address account) external view returns (uint256);
 
     function getBribeRewarderAt(uint256 period, address pool, uint256 index) external view returns (IBribeRewarder);
 

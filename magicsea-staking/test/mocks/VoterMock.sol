@@ -7,6 +7,9 @@ import "../../src/interfaces/IMasterChef.sol";
 import {Constants} from "../../src/libraries/Constants.sol";
 
 contract VoterMock is IVoter {
+
+    address _owner;
+
     uint256 private _currentVotingPeriodId;
 
     uint256 private _startTime;
@@ -17,6 +20,11 @@ contract VoterMock is IVoter {
 
     // periodId => pool => bribeRewarders
     mapping(uint256 => mapping(address => IBribeRewarder[])) private _bribesPerPriod;
+
+    constructor() {
+        _owner = msg.sender;
+    }
+
 
     function getMasterChef() external pure returns (IMasterChef) {
         return IMasterChef(address(0));
@@ -105,24 +113,24 @@ contract VoterMock is IVoter {
         return true;
     }
 
-    function getUserBribeRewaderAt(uint256 period, uint256 tokenId, uint256 index)
+    function getUserBribeRewaderAt(uint256 period, address account, uint256 index)
         external
         pure
         returns (IBribeRewarder)
     {
         {
             period;
-            tokenId;
+            account;
             index;
         }
 
         return IBribeRewarder(address(0));
     }
 
-    function getUserBribeRewarderLength(uint256 period, uint256 tokenId) external pure returns (uint256) {
+    function getUserBribeRewarderLength(uint256 period, address account) external pure returns (uint256) {
         {
             period;
-            tokenId;
+            account;
         }
         return 0;
     }
@@ -190,5 +198,9 @@ contract VoterMock is IVoter {
             tokenId;
         }
         return false;
+    }
+
+    function owner() public view returns (address) {
+        return _owner;
     }
 }

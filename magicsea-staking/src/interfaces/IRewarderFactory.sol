@@ -11,12 +11,12 @@ interface IRewarderFactory {
     error RewarderFactory__ZeroAddress();
     error RewarderFactory__InvalidRewarderType();
     error RewarderFactory__InvalidPid();
+    error RewarderFactory__TokenNotWhitelisted();
+    error RewarderFactory__InvalidLength();
 
     enum RewarderType {
         InvalidRewarder,
         MasterChefRewarder,
-        VeMoeRewarder,
-        JoeStakingRewarder,
         BribeRewarder
     }
 
@@ -29,6 +29,10 @@ interface IRewarderFactory {
     );
 
     event RewarderImplementationSet(RewarderType indexed rewarderType, IRewarder indexed implementation);
+
+    function getBribeCreatorFee() external view returns (uint256);
+
+    function getWhitelistedTokenInfo (address token) external view returns (bool, uint256);
 
     function getRewarderImplementation(RewarderType rewarderType) external view returns (IRewarder);
 
@@ -43,4 +47,6 @@ interface IRewarderFactory {
     function createRewarder(RewarderType rewarderType, IERC20 token, uint256 pid) external returns (IBaseRewarder);
 
     function createBribeRewarder(IERC20 token, address pool) external returns (IBribeRewarder);
+
+    function setWhitelist(address[] calldata tokens, uint256[] calldata minBribeAmounts) external;
 }

@@ -12,8 +12,7 @@ import {IRewarderFactory} from "../interfaces/IRewarderFactory.sol";
 
 /**
  * @title Rewarder Factory Contract
- * @dev The Rewarder Factory Contract allows users to create bribe rewarders,
- * and admin to create masterchef.
+ * @dev The Rewarder Factory Contract allows users to create bribe rewarders and admin to create masterchef.
  */
 contract RewarderFactory is Ownable2StepUpgradeable, IRewarderFactory {
     mapping(RewarderType => IRewarder) private _implementations;
@@ -22,6 +21,16 @@ contract RewarderFactory is Ownable2StepUpgradeable, IRewarderFactory {
     mapping(IRewarder => RewarderType) private _rewarderTypes;
 
     mapping(address => uint256) private _nonces;
+
+    /// @dev holds whitelisted tokens with their minBribeAmount (> 0) as bribe amount per period
+    //  minAmount == 0 means token is not whitelisted
+    mapping(address => uint256) private _whitelistedTokens;
+
+    /// @dev fee for creating bribes in native token
+    uint256 private _bribeCreatorFee;
+
+
+    uint256[10] __gap;
 
     /**
      * @dev Disables the initialize function.
@@ -38,14 +47,34 @@ contract RewarderFactory is Ownable2StepUpgradeable, IRewarderFactory {
         address initialOwner,
         RewarderType[] calldata initialRewarderTypes,
         IRewarder[] calldata initialRewarders
-    ) external initializer {
-        //__Ownable_init(initialOwner);
-        _transferOwnership(initialOwner);
+    ) external reinitializer(1) {
+        __Ownable_init(initialOwner);
 
         uint256 length = initialRewarderTypes.length;
         for (uint256 i; i < length; ++i) {
             _setRewarderImplementation(initialRewarderTypes[i], initialRewarders[i]);
         }
+
+        _bribeCreatorFee = 0; // maybe in the future for non-whitelisted tokens
+    }
+
+    /**
+     * @dev get the fee for creating bribes in native token decimals
+     */
+    function getBribeCreatorFee() external view returns (uint256) {
+        return _bribeCreatorFee;
+    }
+
+    /**
+     * @dev Returns if token is whitelisted and the minBribeAmount
+     *
+     * @param token token address
+     * @return isWhitelisted true if whitelisted
+     * @return minBribeAmount min bribe amount per period
+     */
+    function getWhitelistedTokenInfo (address token) external view returns (bool isWhitelisted, uint256 minBribeAmount) {
+        minBribeAmount = _whitelistedTokens[token];
+        isWhitelisted = minBribeAmount > 0;
     }
 
     /**
@@ -97,8 +126,8 @@ contract RewarderFactory is Ownable2StepUpgradeable, IRewarderFactory {
         external
         returns (IBaseRewarder rewarder)
     {
-        if (rewarderType != RewarderType.VeMoeRewarder) _checkOwner();
-        if (rewarderType == RewarderType.JoeStakingRewarder && pid != 0) revert RewarderFactory__InvalidPid();
+        _checkOwner();
+
         if (rewarderType == RewarderType.BribeRewarder) revert RewarderFactory__InvalidRewarderType();
 
         rewarder = _clone(rewarderType, token, pid);
@@ -106,7 +135,16 @@ contract RewarderFactory is Ownable2StepUpgradeable, IRewarderFactory {
         emit RewarderCreated(rewarderType, token, pid, rewarder);
     }
 
+    /**
+     * @dev Create a bribe rewarder
+     * Everyone can call this function. The bribe token needs to be whitelisted
+     * @param token The token to reward.
+     * @param pool The pool address
+     * @return rewarder The rewarder.
+     */
     function createBribeRewarder(IERC20 token, address pool) external returns (IBribeRewarder rewarder) {
+        _checkWhitelist(address(token));
+
         rewarder = IBribeRewarder(_cloneBribe(RewarderType.BribeRewarder, token, pool));
 
         emit BribeRewarderCreated(RewarderType.BribeRewarder, token, pool, rewarder);
@@ -120,6 +158,22 @@ contract RewarderFactory is Ownable2StepUpgradeable, IRewarderFactory {
      */
     function setRewarderImplementation(RewarderType rewarderType, IRewarder implementation) external onlyOwner {
         _setRewarderImplementation(rewarderType, implementation);
+    }
+
+    /**
+     * @dev Set token with their minBribeAmounts for whitelist
+     * Notice: For whitelist native rewards, use address(0)
+     *
+     * @param tokens token addresses
+     * @param minBribeAmounts minAmounts to bribe, 0 means token will be 'delisted'
+     */
+    function setWhitelist(address[] calldata tokens, uint256[] calldata minBribeAmounts) external onlyOwner {
+        uint256 length = tokens.length;
+        if (length != minBribeAmounts.length) revert RewarderFactory__InvalidLength();
+
+        for (uint256 i; i < length; ++i) {
+            _whitelistedTokens[tokens[i]] = minBribeAmounts[i];
+        }
     }
 
     /**
@@ -184,4 +238,15 @@ contract RewarderFactory is Ownable2StepUpgradeable, IRewarderFactory {
 
         emit RewarderImplementationSet(rewarderType, implementation);
     }
+
+    /**
+     * returns true if token is whitelisted (min amount > 0)
+     * @param token token
+     */
+    function _checkWhitelist(address token) private view {
+        if ( _whitelistedTokens[token] == 0) {
+            revert RewarderFactory__TokenNotWhitelisted();
+        }
+    }
+
 }

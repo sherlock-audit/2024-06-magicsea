@@ -10,6 +10,22 @@
             "25" : [-5, 5],
             "30" : [-5, 5]
         },
-        "defaultRange" : [-5, 5]
+        "defaultRange" : [-5, 5],
+        "rpcUrl" : "https://json-rpc.evm.testnet.iotaledger.net"
+    },
+    "iota": {
+        "farmLens": "0xE1D84B09969E34cD0C23836Ab30bDa31da422eB7",
+        "masterChef": "0xaEd6DC9B5AE8aC8149403D2659de1239655E6D4a",
+        "voter": "0x09c705b517E13F315dF82191E1FC9D210b6429E0",
+        "lbHooksManager": "0x370e2EfdF6e14eae9C4CdEfCe59BEE460672cD67",
+        "lbHooksLens": "0xf54c810632F3F4Bcdc0bb408C12943e75A7DbdcC",
+        "rewardRangePerBinStep" : {
+            "1" : [-1, 1],
+            "20" : [-5, 5],
+            "25" : [-5, 5],
+            "30" : [-5, 5]
+        },
+        "defaultRange" : [-5, 5],
+        "rpcUrl" : "https://json-rpc.evm.iotaledger.net"
     }
 }

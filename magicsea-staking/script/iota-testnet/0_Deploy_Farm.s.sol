@@ -6,21 +6,21 @@ import "forge-std/Script.sol";
 
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 
-import "../src/transparent/TransparentUpgradeableProxy2Step.sol";
-import "../src/transparent/ProxyAdmin2Step.sol";
-import "../src/rewarders/RewarderFactory.sol";
-import "../src/rewarders/MasterChefRewarder.sol";
-import "../src/rewarders/BribeRewarder.sol";
-import "../src/MasterChefV2.sol";
-import "../src/Voter.sol";
-import "../src/mocks/LumMock.sol";
+import "../../src/transparent/TransparentUpgradeableProxy2Step.sol";
+import "../../src/transparent/ProxyAdmin2Step.sol";
+import "../../src/rewarders/RewarderFactory.sol";
+import "../../src/rewarders/MasterChefRewarder.sol";
+import "../../src/rewarders/BribeRewarder.sol";
+import "../../src/MasterChefV2.sol";
+import "../../src/Voter.sol";
+import "../../src/mocks/LumMock.sol";
 
-import "../src/MlumStaking.sol";
+import "../../src/MlumStaking.sol";
 
-import {ILum} from "../src/interfaces/ILum.sol";
-import {IVoter} from "../src/interfaces/IVoter.sol";
-import {IMlumStaking} from "../src/interfaces/IMlumStaking.sol";
-import {IRewarderFactory} from "../src/interfaces/IRewarderFactory.sol";
+import {ILum} from "../../src/interfaces/ILum.sol";
+import {IVoter} from "../../src/interfaces/IVoter.sol";
+import {IMlumStaking} from "../../src/interfaces/IMlumStaking.sol";
+import {IRewarderFactory} from "../../src/interfaces/IRewarderFactory.sol";
 
 contract FarmDeployer is Script {
     address private MLUM_SHIMMER_TESTNET = 0x699F410Af72905b736B171e039241f0E692D66Ea;
@@ -103,7 +103,7 @@ contract FarmDeployer is Script {
         // Deploy Rewarders
         {
             IBaseRewarder masterChefRewarder = new MasterChefRewarder(proxies.masterChef);
-            IBribeRewarder bribeRewarder = new BribeRewarder(proxies.voter);
+            IBribeRewarder bribeRewarder = new BribeRewarder(proxies.voter, proxies.rewarderFactory);
 
             _implementations[IRewarderFactory.RewarderType.MasterChefRewarder] = IBaseRewarder(rewarderAddresses[0]);
             _implementations[IRewarderFactory.RewarderType.BribeRewarder] = IBaseRewarder(rewarderAddresses[1]);
@@ -124,9 +124,8 @@ contract FarmDeployer is Script {
         }
 
         {
-            MasterChef masterChefImplementation = new MasterChef(
-                ILum(lumAddress), IVoter(proxies.voter), IRewarderFactory(proxies.rewarderFactory), address(0), 0.02e18
-            );
+            MasterChef masterChefImplementation =
+                new MasterChef(ILum(lumAddress), IRewarderFactory(proxies.rewarderFactory), address(0), 0.02e18);
 
             require(implementations.masterChef == address(masterChefImplementation), "run::6");
         }
@@ -173,7 +172,9 @@ contract FarmDeployer is Script {
             TransparentUpgradeableProxy2Step masterChefProxy = new TransparentUpgradeableProxy2Step(
                 implementations.masterChef,
                 proxyAdmin,
-                abi.encodeWithSelector(MasterChef.initialize.selector, deployer, TREASURY_TESTNET)
+                abi.encodeWithSelector(
+                    MasterChef.initialize.selector, deployer, TREASURY_TESTNET, IVoter(proxies.voter)
+                )
             );
 
             require(proxies.masterChef == address(masterChefProxy), "run::10");

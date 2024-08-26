@@ -21,6 +21,7 @@ import "forge-std/console.sol";
  *
  * Readonly functions to get data from the farm contracts
  */
+
 contract FarmLens {
     IMasterChef immutable _masterChef;
     IVoter immutable _voter;
@@ -243,7 +244,7 @@ contract FarmLens {
             poolInfo.lpToken = Token({
                 token: lpAddress,
                 symbol: IERC20Metadata(lpAddress).symbol(),
-                decimals:IERC20Metadata(lpAddress).decimals()
+                decimals: IERC20Metadata(lpAddress).decimals()
             });
 
             poolInfo.totalSupply = IERC20(address(lpAddress)).totalSupply();
@@ -252,10 +253,9 @@ contract FarmLens {
 
             poolInfo.token1 =
                 Token({token: tokenYAddress, symbol: IERC20Metadata(tokenYAddress).symbol(), decimals: decimalsY});
-            
+
             poolInfo.reserve0 = reserveX;
             poolInfo.reserve1 = reserveY;
-      
         } catch {
             IMagicSeaPair pair = IMagicSeaPair(lpAddress);
 
@@ -348,7 +348,7 @@ contract FarmLens {
         userData.account = account;
 
         // get tokenIds from account
-        uint256 tokenIdLength = IERC721(address(_mlumStaking)).balanceOf(account);
+        // uint256 tokenIdLength = IERC721(address(_mlumStaking)).balanceOf(account);
 
         // get user rewards by last period, pending rewards are accrued
         uint256 lastPeriod;
@@ -358,40 +358,22 @@ contract FarmLens {
             lastPeriod = 0; // this will give zero rewards anyway
         }
 
-        uint256 numberOfRewards = _numberOfAllUserBribeRewards(lastPeriod, tokenIdLength, account);
+        uint256 numberOfRewards = _voter.getUserBribeRewarderLength(lastPeriod, account);
         userData.userBribeRewards = new BribeReward[](numberOfRewards);
         for (uint256 i; i < numberOfRewards; ++i) {
             // return rewards for each rewarder
-            for (uint256 i1; i1 < tokenIdLength; ++i1) {
-                uint256 tokenId = IERC721Enumerable(address(_mlumStaking)).tokenOfOwnerByIndex(account, i1);
-
-                for (uint256 i2; i2 < _voter.getUserBribeRewarderLength(lastPeriod, tokenId); ++i2) {
-                    userData.userBribeRewards[i] = this.getUserBribeRewardFor(lastPeriod, tokenId, i2);
-                }
-            }
+            userData.userBribeRewards[i] = this.getUserBribeRewardFor(lastPeriod, account, i);
         }
     }
 
-    function _numberOfAllUserBribeRewards(uint256 period, uint256 mlumBalance, address account)
-        internal
-        view
-        returns (uint256 rewardLength)
-    {
-        for (uint256 i; i < mlumBalance; ++i) {
-            uint256 tokenId = IERC721Enumerable(address(_mlumStaking)).tokenOfOwnerByIndex(account, i); // .tokenByIndex(i);
-            rewardLength += _voter.getUserBribeRewarderLength(period, tokenId);
-        }
-    }
-
-    function getUserBribeRewardFor(uint256 period, uint256 tokenId, uint256 index)
+    function getUserBribeRewardFor(uint256 period, address account, uint256 index)
         external
         view
         returns (BribeReward memory userReward)
     {
-        IBribeRewarder rewarder = _voter.getUserBribeRewaderAt(period, tokenId, index);
+        IBribeRewarder rewarder = _voter.getUserBribeRewaderAt(period, account, index);
         userReward.bribe = this.getBribe(rewarder);
         userReward.periodId = period;
-        userReward.tokenId = tokenId;
-        userReward.pendingReward = rewarder.getPendingReward(tokenId); // period, tokenId);
+        userReward.pendingReward = rewarder.getPendingReward(account);
     }
 }

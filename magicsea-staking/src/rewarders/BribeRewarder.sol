@@ -6,10 +6,10 @@ import {SafeERC20, IERC20} from "openzeppelin/token/ERC20/utils/SafeERC20.sol";
 import {Clone} from "../libraries/Clone.sol";
 import {Constants} from "../libraries/Constants.sol";
 import {Math} from "../libraries/Math.sol";
-import {Amounts} from "../libraries/Amounts.sol";
-import {Rewarder2} from "../libraries/Rewarder2.sol";
 import {IVoter} from "../interfaces/IVoter.sol";
 import {IMlumStaking} from "../interfaces/IMlumStaking.sol";
+
+import {IRewarderFactory} from "../interfaces/IRewarderFactory.sol";
 
 import "../interfaces/IBribeRewarder.sol";
 
@@ -19,27 +19,16 @@ import "forge-std/console.sol";
  * @title BribeRewarder
  * @author MagicSea / BlueLabs
  * @notice bribe pools and pay rewards to voters
- *
- * TODO
- * - emit per seconds,
- * - accTokenPerShare per periodId,
- * - claim with tokenId and accrue all periods before start bribe and after last bribe
- * - pendingReward only with tokenId
- * - optionals: claim with mutliple tokenIds
- *
  */
 contract BribeRewarder is Ownable2StepUpgradeable, Clone, IBribeRewarder {
     using SafeERC20 for IERC20;
     using Math for uint256;
-    using Amounts for Amounts.Parameter;
-    using Rewarder2 for Rewarder2.Parameter;
 
     address public immutable implementation;
 
     address internal immutable _caller; // Voter
 
-    /// @dev period => tokenId => parameter
-    mapping(uint256 => Amounts.Parameter) internal _userVotesPerVotingPeriod;
+    address internal immutable _rewarderFactory;
 
     /// @dev period where bribes start
     uint256 internal _startVotingPeriod;
@@ -49,33 +38,31 @@ contract BribeRewarder is Ownable2StepUpgradeable, Clone, IBribeRewarder {
 
     uint256 internal _amountPerPeriod;
 
-    /// period => tokenId => rewardDebt
-    mapping(uint256 => mapping(uint256 => uint256)) private _rewardDebt;
+    /// @dev period => account => user votes
+    mapping(uint256 periodId => mapping(address account => uint256 deltaVotes)) internal _userVotesPerPeriod;
+
+    /// @dev period => account => rewardDebt
+    mapping(uint256 periodId => mapping(address account => uint256)) internal _rewardDebt;
 
     struct RewardPerPeriod {
-        Amounts.Parameter userVotes;
-        Rewarder2.Parameter rewarder;
+        uint256 totalVotes;
+        uint256 accRewardPerShare;
+        uint256 lastUpdateTimestamp;
     }
 
+    /// @dev holds all reward information over first to last bribe periods / epoches
     RewardPerPeriod[] internal _rewards;
 
-    mapping(uint256 => mapping(uint256 => uint256)) private unclaimedRewards;
-
-    /// @dev timestamp of last update, bribes are continuous
-    uint256 internal _lastUpdateTimestamp;
-
-    // TODO
-    // accTokenPerShare
-    // rewards Per Sec over bribing period
 
     modifier onlyVoter() {
         _checkVoter();
         _;
     }
 
-    constructor(address caller) {
+    constructor(address caller, address rewarderFactory) {
         _caller = caller;
         implementation = address(this);
+        _rewarderFactory = rewarderFactory;
 
         _disableInitializers();
     }
@@ -134,52 +121,57 @@ contract BribeRewarder is Ownable2StepUpgradeable, Clone, IBribeRewarder {
     }
 
     /**
-     * Deposits votes for the given period and token id, only callable by the voter contract
+     * Deposits votes for the given period and user account, only callable by the voter contract
      *
      * @param periodId period id of the voting period
-     * @param tokenId owners token id
+     * @param account user account which voted
      * @param deltaAmount amount of votes
      */
-    function deposit(uint256 periodId, uint256 tokenId, uint256 deltaAmount) public onlyVoter {
-        _modify(periodId, tokenId, deltaAmount.toInt256(), false);
-
-        emit Deposited(periodId, tokenId, _pool(), deltaAmount);
+    function deposit(uint256 periodId, address account, uint256 deltaAmount) public override onlyVoter {
+        _deposit(periodId, account, deltaAmount);
+        emit Deposited(periodId, account, _pool(), deltaAmount);
     }
 
     /**
-     * Claim the reward for the given period and token id
-     * @param tokenId token id of the owner
+     * Claim the reward for the given account
+     *
+     * @param account indivual voter
      */
-    function claim(uint256 tokenId) external override {
+    function claim(address account) external override {
         uint256 endPeriod = IVoter(_caller).getLatestFinishedPeriod();
-
         uint256 totalAmount;
 
         // calc emission per period cause every period can every other durations
         for (uint256 i = _startVotingPeriod; i <= endPeriod; ++i) {
-            totalAmount += _modify(i, tokenId, 0, true);
+            totalAmount += _claim(i, account);
         }
 
-        emit Claimed(tokenId, _pool(), totalAmount);
+        emit Claimed(account, _pool(), totalAmount);
     }
 
-    function getPendingReward(uint256 tokenId) external view override returns (uint256 totalReward) {
+
+    /**
+    * Get pending rewards for account
+    * @param account user account
+    */
+    function getPendingReward(address account) external view override returns (uint256 totalReward) {
         uint256 endPeriod = IVoter(_caller).getLatestFinishedPeriod();
 
         for (uint256 periodId = _startVotingPeriod; periodId <= endPeriod; ++periodId) {
             RewardPerPeriod storage reward = _rewards[_indexByPeriodId(periodId)];
-            Amounts.Parameter storage amounts = reward.userVotes;
-            Rewarder2.Parameter storage rewarder = reward.rewarder;
 
-            uint256 balance = amounts.getAmountOf(tokenId);
-            uint256 totalSupply = amounts.getTotalAmount();
-
-            uint256 totalRewards = totalSupply > 0 ? _calculateRewards(periodId) : 0;
-
-            totalReward += rewarder.getPendingReward(bytes32(tokenId), balance, totalSupply, totalRewards);
+            uint256 totalRewards = _calculateRewards(reward.lastUpdateTimestamp, periodId);
+            uint256 totalSupply = reward.totalVotes;
+            if (totalSupply > 0) {
+                uint256 accRewardPerShare = reward.accRewardPerShare + _shiftPrecision(totalRewards) / totalSupply;
+                totalReward += _unshiftPrecision(_userVotesPerPeriod[periodId][account] * accRewardPerShare) - _rewardDebt[periodId][account];
+            } else {
+                totalReward += _unshiftPrecision(_userVotesPerPeriod[periodId][account] * reward.accRewardPerShare) - _rewardDebt[periodId][account];
+            }
         }
         return totalReward;
     }
+
 
     /**
      * Get the bribe periods
@@ -198,10 +190,16 @@ contract BribeRewarder is Ownable2StepUpgradeable, Clone, IBribeRewarder {
         return (_pool(), periodIds);
     }
 
+    /**
+     * @dev Returns the address of the token to be distributed as rewards.
+     */
     function getToken() public view virtual override returns (IERC20) {
         return _token();
     }
 
+    /**
+     * @dev Returns the pool address which is bribed
+     */
     function getPool() public view virtual override returns (address) {
         return _pool();
     }
@@ -210,23 +208,48 @@ contract BribeRewarder is Ownable2StepUpgradeable, Clone, IBribeRewarder {
         return _caller;
     }
 
+    /**
+     * @dev Returns the start period id of the bribed periods
+     */
     function getStartVotingPeriodId() public view virtual override returns (uint256) {
         return _startVotingPeriod;
     }
 
+    /**
+     * @dev Returns the last period id of the bribed periods
+     */
     function getLastVotingPeriodId() public view virtual override returns (uint256) {
         return _lastVotingPeriod;
+    }
+
+    /**
+     * @dev Returns the amount of reward per period
+     */
+    function getAmountPerPeriod() external view override returns (uint256) {
+        return _amountPerPeriod;
     }
 
     // INTERNAL FUNCTIONS
 
     /**
      * @dev bribe pool for start and last id
+     *
+     * @param startId start period id
+     * @param lastId last period to reward
+     * @param amountPerPeriod reward amount for each period
      */
     function _bribe(uint256 startId, uint256 lastId, uint256 amountPerPeriod) internal {
         _checkAlreadyInitialized();
+
         if (lastId < startId) revert BribeRewarder__WrongEndId();
         if (amountPerPeriod == 0) revert BribeRewarder__ZeroReward();
+
+        // check whitelist
+        (, uint256 minAmount) = IRewarderFactory(_rewarderFactory).getWhitelistedTokenInfo(address(_token()));
+        if (amountPerPeriod < minAmount) {
+            revert BribeRewarder__AmountTooLow();
+        }
+
 
         IVoter voter = IVoter(_caller);
 
@@ -244,60 +267,86 @@ contract BribeRewarder is Ownable2StepUpgradeable, Clone, IBribeRewarder {
         _lastVotingPeriod = lastId;
         _amountPerPeriod = amountPerPeriod;
 
-        // create rewads per period
+        // create rewards per period
         uint256 bribeEpochs = _calcPeriods(startId, lastId);
         for (uint256 i = 0; i <= bribeEpochs; ++i) {
-            _rewards.push();
+            RewardPerPeriod storage period = _rewards.push();
+            period.lastUpdateTimestamp = block.timestamp;
         }
-
-        _lastUpdateTimestamp = block.timestamp;
 
         IVoter(_caller).onRegister();
 
         emit BribeInit(startId, lastId, amountPerPeriod);
     }
 
-    function _modify(uint256 periodId, uint256 tokenId, int256 deltaAmount, bool isPayOutReward)
-        private
-        returns (uint256 rewardAmount)
-    {
-        if (!IVoter(_caller).ownerOf(tokenId, msg.sender)) {
-            revert BribeRewarder__NotOwner();
-        }
+    /**
+     * Deposit votes for the given period and user account
+     *
+     * @param periodId period id of the voting period
+     * @param account account
+     * @param deltaAmount amount of votes
+     */
+    function _deposit(uint256 periodId, address account, uint256 deltaAmount) internal {
+        uint256 accRewardPerShare = _update(periodId, deltaAmount);
 
-        // extra check so we dont calc rewards before starttime
-        (uint256 startTime,) = IVoter(_caller).getPeriodStartEndtime(periodId);
-        if (block.timestamp <= startTime) {
-            _lastUpdateTimestamp = startTime;
-        }
+        _userVotesPerPeriod[periodId][account] += deltaAmount;
+        _rewardDebt[periodId][account] += _unshiftPrecision(deltaAmount * accRewardPerShare);
+    }
 
-        RewardPerPeriod storage reward = _rewards[_indexByPeriodId(periodId)];
-        Amounts.Parameter storage amounts = reward.userVotes;
-        Rewarder2.Parameter storage rewarder = reward.rewarder;
+    /**
+     * @dev Claim the reward for the given period and account
+     *
+     * @param periodId period id of the voting period
+     * @param account indivual voter
+     */
+    function _claim(uint256 periodId, address account) internal returns (uint256 rewardAmount) {
+        uint256 accRewardPerShare = _update(periodId, 0);
 
-        (uint256 oldBalance, uint256 newBalance, uint256 oldTotalSupply,) = amounts.update(tokenId, deltaAmount);
-
-        uint256 totalRewards = _calculateRewards(periodId);
-
-        rewardAmount = rewarder.update(bytes32(tokenId), oldBalance, newBalance, oldTotalSupply, totalRewards);
-
-        if (block.timestamp > _lastUpdateTimestamp) {
-            _lastUpdateTimestamp = block.timestamp;
-        }
-
-        if (isPayOutReward) {
-            rewardAmount = rewardAmount + unclaimedRewards[periodId][tokenId];
-            unclaimedRewards[periodId][tokenId] = 0;
-            if (rewardAmount > 0) {
-                IERC20 token = _token();
-                _safeTransferTo(token, msg.sender, rewardAmount);
-            }
-        } else {
-            unclaimedRewards[periodId][tokenId] += rewardAmount;
+       rewardAmount = _unshiftPrecision(_userVotesPerPeriod[periodId][account] * accRewardPerShare) - _rewardDebt[periodId][account];
+        if (rewardAmount > 0) {
+            IERC20 token = _token();
+            _safeTransferTo(token, account, rewardAmount);
         }
     }
 
-    function _calculateRewards(uint256 periodId) internal view returns (uint256) {
+    /**
+     * Update rewards for given period
+     *
+     * @param periodId period id of the voting period
+     * @param amountToAdd amount of votes to add to total votes, 0 if no votes added (e.g. on claim)
+     *
+     * @return accRewardPerShare updated reward per share (scaled by ACC_PRECISION)
+     */
+    function _update(uint256 periodId, uint256 amountToAdd) internal returns (uint256) {
+        RewardPerPeriod storage reward = _rewards[_indexByPeriodId(periodId)];
+
+        // extra check so we dont calc rewards before starttime
+        (uint256 startTime,) = IVoter(_caller).getPeriodStartEndtime(periodId);
+        if (block.timestamp <= startTime || reward.totalVotes == 0) {
+            reward.lastUpdateTimestamp = startTime;
+        }
+
+        uint256 totalRewards = _calculateRewards(reward.lastUpdateTimestamp, periodId);
+
+        reward.accRewardPerShare = reward.totalVotes > 0 ? reward.accRewardPerShare + _shiftPrecision(totalRewards)  / reward.totalVotes : 0;
+        reward.totalVotes += amountToAdd;
+
+        if (block.timestamp > reward.lastUpdateTimestamp) {
+            reward.lastUpdateTimestamp = block.timestamp;
+        }
+
+        return reward.accRewardPerShare;
+    }
+
+    /**
+     * @dev Calculate rewards for given period depending on the last update timestamp
+     *
+     * @param lastUpdateTimestamp last update timestamp
+     * @param periodId period id of the voting period
+     *
+     * @return rewards for the period
+     */
+    function _calculateRewards(uint256 lastUpdateTimestamp, uint256 periodId) internal view returns (uint256) {
         (uint256 startTime, uint256 endTime) = IVoter(_caller).getPeriodStartEndtime(periodId);
 
         if (endTime == 0 || startTime > block.timestamp) {
@@ -305,23 +354,36 @@ contract BribeRewarder is Ownable2StepUpgradeable, Clone, IBribeRewarder {
         }
 
         uint256 duration = endTime - startTime;
-        uint256 emissionsPerSecond = _amountPerPeriod / duration;
-
-        uint256 lastUpdateTimestamp = _lastUpdateTimestamp;
         uint256 timestamp = block.timestamp > endTime ? endTime : block.timestamp;
-        return timestamp > lastUpdateTimestamp ? (timestamp - lastUpdateTimestamp) * emissionsPerSecond : 0;
+
+        return timestamp > lastUpdateTimestamp ? (timestamp - lastUpdateTimestamp) * _amountPerPeriod / duration : 0;
     }
 
+    /**
+     * @dev Returns the index of the period in the rewards array.
+     * @param periodId The period ID.
+     * @return The index of the period in the rewards array.
+     */
     function _indexByPeriodId(uint256 periodId) internal view returns (uint256) {
         return periodId - _startVotingPeriod;
     }
 
+    /**
+     * @dev Reverts if the contract has already been initialized.
+     */
     function _checkAlreadyInitialized() internal view virtual {
         if (_rewards.length > 0) {
             revert BribeRewarder__AlreadyInitialized();
         }
     }
 
+    /**
+     * @dev Calculates the total amount of tokens to be distributed as rewards.
+     * @param startId The start period ID.
+     * @param lastId The last period ID.
+     * @param amountPerPeriod The amount of tokens to be distributed per period.
+     * @return The total amount of tokens to be distributed as rewards.
+     */
     function _calcTotalAmount(uint256 startId, uint256 lastId, uint256 amountPerPeriod)
         internal
         pure
@@ -330,6 +392,12 @@ contract BribeRewarder is Ownable2StepUpgradeable, Clone, IBribeRewarder {
         return _calcPeriods(startId, lastId) * amountPerPeriod;
     }
 
+    /**
+     * @dev Calculates the number of periods between the start and last period.
+     * @param startId The start period ID.
+     * @param lastId The last period ID.
+     * @return The number of periods between the start and last period.
+     */
     function _calcPeriods(uint256 startId, uint256 lastId) internal pure returns (uint256) {
         return (lastId - startId) + 1;
     }
@@ -379,6 +447,34 @@ contract BribeRewarder is Ownable2StepUpgradeable, Clone, IBribeRewarder {
     }
 
     /**
+     * @dev Transfers any remaining tokens to the specified account.
+     * If the bribe rewarder is not initialized, the owner can sweep the funds.
+     *
+     * Otherwise only the voter admin can sweep the funds.
+     *
+     * @param token The token to transfer.
+     * @param account The account to transfer the tokens to.
+     */
+    function sweep(IERC20 token, address account) public virtual {
+
+        // if not initialized, bribe rewarder owner can sweep the funds
+        if (_rewards.length == 0) {
+           _checkOwner();
+        } else {
+            // get owner of voter (= _caller)
+            if (Ownable2StepUpgradeable(_caller).owner() != msg.sender) {
+                revert BribeRewarder__OnlyVoterAdmin();
+            }
+        }
+
+        uint256 balance = _balanceOfThis(token);
+
+        _safeTransferTo(token, account, balance);
+
+        emit Swept(token, account, balance);
+    }
+
+    /**
      * @dev Returns the balance of the specified token held by the contract.
      * @param token The token to check the balance of.
      * @return The balance of the token held by the contract.
@@ -405,7 +501,21 @@ contract BribeRewarder is Ownable2StepUpgradeable, Clone, IBribeRewarder {
         }
     }
 
-    function getAmountPerPeriod() external view override returns (uint256) {
-        return _amountPerPeriod;
+    /**
+     * @dev Shifts value to the left by the precision bits.
+     * @param value value to shift
+     */
+    function _shiftPrecision(uint256 value) internal pure returns (uint256) {
+        return value << Constants.ACC_PRECISION_BITS;
     }
+
+    /**
+     * @dev Unshifts value to the right by the precision bits.
+     * @param value value to unshift
+     */
+    function _unshiftPrecision(uint256 value) internal pure returns (uint256) {
+        return value >> Constants.ACC_PRECISION_BITS;
+    }
+
+
 }

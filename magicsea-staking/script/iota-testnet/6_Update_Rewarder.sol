@@ -4,8 +4,8 @@ pragma solidity ^0.8.13;
 import {Script, console} from "forge-std/Script.sol";
 
 import {Addresses} from "./config/Addresses.sol";
-import "../src/rewarders/RewarderFactory.sol";
-import "../src/rewarders/BribeRewarder.sol";
+import "../../src/rewarders/RewarderFactory.sol";
+import "../../src/rewarders/BribeRewarder.sol";
 
 contract CoreDeployer is Script {
     function setUp() public {}
@@ -16,7 +16,7 @@ contract CoreDeployer is Script {
         console.log("Deployer address: %s", deployer);
 
         vm.broadcast(deployer);
-        rewarderImplementation = new BribeRewarder(Addresses.PROXY_VOTER_TESTNET);
+        rewarderImplementation = new BribeRewarder(Addresses.PROXY_VOTER_TESTNET, Addresses.PROXY_REWARDER_FACTORY_TESTNET);
 
         RewarderFactory factory = RewarderFactory(Addresses.PROXY_REWARDER_FACTORY_TESTNET);
 

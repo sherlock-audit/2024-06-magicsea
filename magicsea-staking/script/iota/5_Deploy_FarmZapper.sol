@@ -3,9 +3,9 @@ pragma solidity ^0.8.13;
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {IMasterChef} from "../src/interfaces/IMasterChef.sol";
+import {IMasterChef} from "../../src/interfaces/IMasterChef.sol";
+import {FarmZapper} from "../../src/FarmZapper.sol";
 import {Addresses} from "./config/Addresses.sol";
-import {FarmZapper} from "../src/FarmZapper.sol";
 
 contract CoreDeployer is Script {
     function setUp() public {}
@@ -17,13 +17,13 @@ contract CoreDeployer is Script {
 
         vm.broadcast(deployer);
         farmZapper = new FarmZapper(
-            Addresses.ROUTER_V1_TESTNET, Addresses.PROXY_MASTERCHEF_TESTNET, Addresses.WNATIVE_TESTNET, 1000, deployer
+            Addresses.ROUTER_V1_MAINNET, Addresses.PROXY_MASTERCHEF_MAINNET, Addresses.WNATIVE_MAINNET, 1000, deployer
         );
 
         console.log("FarmZapper address: %s", address(farmZapper));
 
         console.log("Update Masterchef trustee");
         vm.broadcast(deployer);
-        IMasterChef(Addresses.PROXY_MASTERCHEF_TESTNET).setTrustee(address(farmZapper));
+        IMasterChef(Addresses.PROXY_MASTERCHEF_MAINNET).setTrustee(address(farmZapper));
     }
 }

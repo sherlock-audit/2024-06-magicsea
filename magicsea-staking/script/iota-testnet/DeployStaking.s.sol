@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 import {Script, console} from "forge-std/Script.sol";
 import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
-import {MlumStaking} from "../src/MlumStaking.sol";
+import {MlumStaking} from "../../src/MlumStaking.sol";
 
 contract CoreDeployer is Script {
     function setUp() public {}
