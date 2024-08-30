@@ -52,8 +52,18 @@ contract BribeRewarderTest is Test {
             )
         );
         factory.setRewarderImplementation(
-            IRewarderFactory.RewarderType.BribeRewarder, IRewarder(address(new BribeRewarder(address(_voterMock))))
+            IRewarderFactory.RewarderType.BribeRewarder, IRewarder(address(
+                new BribeRewarder(address(_voterMock), address(factory))))
         );
+
+
+        address[] memory rewardTokens = new address[](1);
+        rewardTokens[0] = address(rewardToken);
+
+        uint256[] memory minAmounts = new uint256[](1);
+        minAmounts[0] = 10e18;
+
+        factory.setWhitelist(rewardTokens, minAmounts);
 
         rewarder = BribeRewarder(payable(address(factory.createBribeRewarder(rewardToken, pool))));
     }
@@ -82,9 +92,50 @@ contract BribeRewarderTest is Test {
         vm.expectRevert(IBribeRewarder.BribeRewarder__InsufficientFunds.selector);
         rewarder.bribe(2, 2, 10e18);
 
-        ERC20Mock(address(rewardToken)).mint(address(rewarder), 5e18);
+        ERC20Mock(address(rewardToken)).mint(address(rewarder), 10e18);
         vm.expectRevert(IBribeRewarder.BribeRewarder__InsufficientFunds.selector);
-        rewarder.bribe(2, 2, 10e18);
+        rewarder.bribe(2, 2, 20e18);
+
+        vm.expectRevert(IBribeRewarder.BribeRewarder__AmountTooLow.selector);
+        rewarder.bribe(2, 2, 5e18);
+    }
+
+    function testWhitelist() public {
+        // revert
+        vm.expectRevert(IRewarderFactory.RewarderFactory__TokenNotWhitelisted.selector);
+        factory.createBribeRewarder(tokenA, pool);
+
+        // check for length
+        address[] memory rewardTokens = new address[](1);
+        rewardTokens[0] = address(tokenA);
+
+        uint256[] memory minAmounts = new uint256[](2);
+        minAmounts[0] = 1;
+        minAmounts[1] = 2e18;
+
+        vm.expectRevert(IRewarderFactory.RewarderFactory__InvalidLength.selector);
+        factory.setWhitelist(rewardTokens, minAmounts);
+
+        // allow tokenA
+        minAmounts = new uint256[](1);
+        minAmounts[0] = 2e18;
+
+        factory.setWhitelist(rewardTokens, minAmounts);
+
+        (bool isWhitelisted, uint256 minAmount) = factory.getWhitelistedTokenInfo(address(tokenA));
+        assertTrue(isWhitelisted);
+        assertEq(2e18, minAmount);
+
+        IBribeRewarder rewarder_ = factory.createBribeRewarder(tokenA, pool);
+        assertEq(address(tokenA), address(rewarder_.getToken()));
+
+        // disallow tokenA again
+        minAmounts[0] = 0;
+
+        factory.setWhitelist(rewardTokens, minAmounts);
+
+        vm.expectRevert(IRewarderFactory.RewarderFactory__TokenNotWhitelisted.selector);
+        factory.createBribeRewarder(tokenA, pool);
     }
 
     function testStartEndEnd() public {
@@ -127,29 +178,29 @@ contract BribeRewarderTest is Test {
         rewarder.fundAndBribe(1, 2, 10e18);
 
         vm.expectRevert(IBribeRewarder.BribeRewarder__OnlyVoter.selector);
-        rewarder.deposit(1, 1, 0.2e18);
+        rewarder.deposit(1, alice, 0.2e18);
 
         _voterMock.setCurrentPeriod(1);
         _voterMock.setStartAndEndTime(0, 20);
 
         vm.prank(address(_voterMock));
         vm.warp(0);
-        rewarder.deposit(1, 1, 0.2e18);
+        rewarder.deposit(1, alice, 0.2e18);
 
         // still period = 0, so reward is 0
         vm.warp(5);
-        assertEq(0, rewarder.getPendingReward(1));
+        assertEq(0, rewarder.getPendingReward(alice));
 
         // manipulate period and endtime
         _voterMock.setCurrentPeriod(2);
         // _voterMock.setStartAndEndTime(25, 30);
         _voterMock.setLatestFinishedPeriod(1);
         vm.warp(20);
-        assertEq(10000000000000000000, rewarder.getPendingReward(1));
+        assertEq(10000000000000000000, rewarder.getPendingReward(alice));
 
         vm.warp(21);
         vm.prank(alice);
-        rewarder.claim(1);
+        rewarder.claim(alice);
 
         assertEq(10000000000000000000, rewardToken.balanceOf(alice));
     }
@@ -166,14 +217,14 @@ contract BribeRewarderTest is Test {
         // time: 0
         vm.warp(0);
         vm.prank(address(_voterMock));
-        rewarder.deposit(1, 1, 0.2e18);
+        rewarder.deposit(1, alice, 0.2e18);
 
-        assertEq(0, rewarder.getPendingReward(1));
+        assertEq(0, rewarder.getPendingReward(alice));
 
         // time: 50, seconds join
         vm.warp(50);
         vm.prank(address(_voterMock));
-        rewarder.deposit(1, 2, 0.2e18);
+        rewarder.deposit(1, bob, 0.2e18);
 
         // time: 100
         vm.warp(100);
@@ -184,16 +235,49 @@ contract BribeRewarderTest is Test {
         // 1 -> [0,50] -> 1: 0.5
         // 2 -> [50,100] -> 1: 0.25 + 0.5, 2: 0.25
 
-        assertEq(7500000000000000000, rewarder.getPendingReward(1));
-        assertEq(2500000000000000000, rewarder.getPendingReward(2));
+        assertEq(7500000000000000000, rewarder.getPendingReward(alice));
+        assertEq(2500000000000000000, rewarder.getPendingReward(bob));
 
         vm.prank(alice);
-        rewarder.claim(1);
+        rewarder.claim(alice);
 
         vm.prank(bob);
-        rewarder.claim(2);
+        rewarder.claim(bob);
 
         assertEq(7500000000000000000, rewardToken.balanceOf(alice));
         assertEq(2500000000000000000, rewardToken.balanceOf(bob));
+    }
+
+    function testSweep() public {
+
+        vm.prank(bob);
+        IBribeRewarder newRewarder = factory.createBribeRewarder(
+            rewardToken, pool
+        );
+
+        ERC20Mock(address(rewardToken)).mint(address(newRewarder), 20e18);
+
+        vm.expectRevert();
+        vm.prank(alice);
+        newRewarder.sweep(rewardToken, alice);
+
+        vm.prank(bob);
+        newRewarder.sweep(rewardToken, bob);
+
+        assertEq(20e18, rewardToken.balanceOf(bob));
+
+        vm.startPrank(bob);
+        rewardToken.approve(address(newRewarder), 20e18);
+
+        BribeRewarder(payable(address(newRewarder))).fundAndBribe(1, 2, 10e18);
+
+        vm.expectRevert(IBribeRewarder.BribeRewarder__OnlyVoterAdmin.selector);
+        newRewarder.sweep(rewardToken, bob);
+        vm.stopPrank();
+
+        // sweep as admin (= address(this))
+        newRewarder.sweep(rewardToken, bob);
+
+        assertEq(20e18, rewardToken.balanceOf(bob));
     }
 }

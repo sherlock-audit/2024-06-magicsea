@@ -6,6 +6,7 @@
   "license": "MIT",
   "private": true,
   "scripts": {
+    "set-fixed-farms" : "node js/set-fixed-farms.js",
     "sync-farms" : "node js/sync-farm.js",
     "start-voting-period" : "node js/start-voting-period.js"
   },

@@ -2,10 +2,10 @@
 pragma solidity ^0.8.13;
 
 import {Script, console} from "forge-std/Script.sol";
-import {ILum} from "../src/interfaces/ILum.sol";
-import {IMasterChef} from "../src/interfaces/IMasterChef.sol";
-import {ERC20Mock, IERC20} from "../src/mocks/ERC20Mock.sol";
-import {LumMock} from "../src/mocks/LumMock.sol";
+import {ILum} from "../../src/interfaces/ILum.sol";
+import {IMasterChef} from "../../src/interfaces/IMasterChef.sol";
+import {ERC20Mock, IERC20} from "../../src/mocks/ERC20Mock.sol";
+import {LumMock} from "../../src/mocks/LumMock.sol";
 import {Addresses} from "./config/Addresses.sol";
 
 contract CoreDeployer is Script {

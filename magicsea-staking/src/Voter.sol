@@ -45,13 +45,15 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
     mapping(uint256 => mapping(address => uint256)) private _poolVotesPerPeriod;
 
     // period id => rewarders;
-    mapping(uint256 => EnumerableSet.Bytes32Set) private _registeredBribesPerPeriod; //extra check
+    mapping(uint256 => EnumerableSet.Bytes32Set)
+        private _registeredBribesPerPeriod; //extra check
 
-    // periodId => tokenId  => bribes
-    mapping(uint256 => mapping(uint256 => IBribeRewarder[])) private _userBribesPerPeriod;
+    // periodId => account  => bribes
+    mapping(uint256 periodId => mapping(address account => IBribeRewarder[])) private _userBribesPerPeriod;
 
     // periodId => pool => bribeRewarders
-    mapping(uint256 => mapping(address => IBribeRewarder[])) private _bribesPerPriod;
+    mapping(uint256 => mapping(address => IBribeRewarder[]))
+        private _bribesPerPriod;
 
     /// @dev tokenId => pool => votes
     mapping(uint256 => mapping(address => uint256)) private _userVotes;
@@ -77,11 +79,19 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
     /// @dev set pool validator;
     IVoterPoolValidator private _poolValidator;
 
+    /// @dev operator for the voter
     address private _operator;
+
+    /// @dev holds elevated rewarders eligible bribing beyond the bribe limit per pool
+    mapping(address rewarder => bool isElevated) private _elevatedRewarders;
 
     uint256[9] __gap;
 
-    constructor(IMasterChef masterChef, IMlumStaking mlumStaking, IRewarderFactory factory) {
+    constructor(
+        IMasterChef masterChef,
+        IMlumStaking mlumStaking,
+        IRewarderFactory factory
+    ) {
         _disableInitializers();
 
         _masterChef = masterChef;
@@ -115,17 +125,20 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
     }
 
     function _votingStarted() internal view returns (bool) {
-        return _startTimes[_currentVotingPeriodId].startTime != 0
-            && _startTimes[_currentVotingPeriodId].startTime <= block.timestamp;
+        return
+            _startTimes[_currentVotingPeriodId].startTime != 0 &&
+            _startTimes[_currentVotingPeriodId].startTime <= block.timestamp;
     }
 
     function _votingEnded() internal view returns (bool) {
-        return _votingStarted() && _startTimes[_currentVotingPeriodId].endTime <= block.timestamp;
+        return
+            _votingStarted() &&
+            _startTimes[_currentVotingPeriodId].endTime <= block.timestamp;
     }
 
     /**
      * @dev bribe rewarder registers itself
-     * TODO check if rewarder is from allowed rewarderFactory
+     * Checks if rewarder is from allowed rewarderFactory
      */
     function onRegister() external override {
         IBribeRewarder rewarder = IBribeRewarder(msg.sender);
@@ -133,13 +146,21 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
         _checkRegisterCaller(rewarder);
 
         uint256 currentPeriodId = _currentVotingPeriodId;
+
+        bool isElevated = _elevatedRewarders[address(rewarder)];
+
         (address pool, uint256[] memory periods) = rewarder.getBribePeriods();
         for (uint256 i = 0; i < periods.length; ++i) {
-            // TODO check if rewarder token + pool  is already registered
-
             require(periods[i] >= currentPeriodId, "wrong period");
-            require(_bribesPerPriod[periods[i]][pool].length + 1 <= Constants.MAX_BRIBES_PER_POOL, "too much bribes");
+            // only admin is allowed to add more bribes when limit is reached
+            require(_bribesPerPriod[periods[i]][pool].length + 1 <= Constants.MAX_BRIBES_PER_POOL || isElevated, "too much bribes");
+
             _bribesPerPriod[periods[i]][pool].push(rewarder);
+        }
+
+        // remove elevated status
+        if (isElevated) {
+            delete _elevatedRewarders[address(rewarder)];
         }
     }
 
@@ -150,15 +171,25 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
      * @param pools - array of pool addresses
      * @param deltaAmounts - array of amounts must not exceed the total voting power
      */
-    function vote(uint256 tokenId, address[] calldata pools, uint256[] calldata deltaAmounts) external {
+    function vote(
+        uint256 tokenId,
+        address[] calldata pools,
+        uint256[] calldata deltaAmounts
+    ) external {
         if (pools.length != deltaAmounts.length) revert IVoter__InvalidLength();
 
         // check voting started
         if (!_votingStarted()) revert IVoter_VotingPeriodNotStarted();
         if (_votingEnded()) revert IVoter_VotingPeriodEnded();
 
+        // dont allow voting if emergency unlock is active
+        if (_mlumStaking.isUnlocked()) {
+            revert IVoter__EmergencyUnlock();
+        }
+
         // check ownership of tokenId
-        if (_mlumStaking.ownerOf(tokenId) != msg.sender) {
+        address voterAccount = _mlumStaking.ownerOf(tokenId);
+        if (voterAccount != msg.sender) {
             revert IVoter__NotOwner();
         }
 
@@ -168,24 +199,27 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
             revert IVoter__AlreadyVoted();
         }
 
-        // check if _minimumLockTime >= initialLockDuration and it is locked
-        if (_mlumStaking.getStakingPosition(tokenId).initialLockDuration < _minimumLockTime) {
-            revert IVoter__InsufficientLockTime();
-        }
-        if (_mlumStaking.getStakingPosition(tokenId).lockDuration < _periodDuration) {
-            revert IVoter__InsufficientLockTime();
-        }
-
-        uint256 votingPower = _mlumStaking.getStakingPosition(tokenId).amountWithMultiplier;
-
-        // check if deltaAmounts > votingPower
         uint256 totalUserVotes;
-        for (uint256 i = 0; i < pools.length; ++i) {
-            totalUserVotes += deltaAmounts[i];
-        }
+        {
+            // scope to avoid stack too deep
 
-        if (totalUserVotes > votingPower) {
-            revert IVoter__InsufficientVotingPower();
+            IMlumStaking.StakingPosition memory position = _mlumStaking
+                .getStakingPosition(tokenId);
+
+            // check initialLockDuration and remaining lock durations
+            _checkLockDurations(position);
+
+            uint256 votingPower = position.amountWithMultiplier;
+
+            // check if deltaAmounts > votingPower
+
+            for (uint256 i = 0; i < pools.length; ++i) {
+                totalUserVotes += deltaAmounts[i];
+            }
+
+            if (totalUserVotes > votingPower) {
+                revert IVoter__InsufficientVotingPower();
+            }
         }
 
         IVoterPoolValidator validator = _poolValidator;
@@ -208,7 +242,7 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
                 _votes.set(pool, deltaAmount);
             }
 
-            _notifyBribes(_currentVotingPeriodId, pool, tokenId, deltaAmount); // msg.sender, deltaAmount);
+            _notifyBribes(_currentVotingPeriodId, pool, voterAccount, deltaAmount); // msg.sender, deltaAmount);
         }
 
         _totalVotes += totalUserVotes;
@@ -218,46 +252,63 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
         emit Voted(tokenId, currentPeriodId, pools, deltaAmounts);
     }
 
-    function _notifyBribes(uint256 periodId, address pool, uint256 tokenId, uint256 deltaAmount) private {
+    function _checkLockDurations(
+        IMlumStaking.StakingPosition memory position
+    ) internal view {
+        if (position.initialLockDuration < _minimumLockTime) {
+            revert IVoter__InsufficientLockTime();
+        }
+        // check if the position is locked for the voting period
+        uint256 _votingEndTime = _startTimes[_currentVotingPeriodId].endTime;
+        if (_votingEndTime > block.timestamp) {
+            uint256 _remainingVotingTime = _votingEndTime - block.timestamp;
+            if (_remainingLockTime(position) < _remainingVotingTime) {
+                revert IVoter__InsufficientLockTime();
+            }
+        }
+    }
+
+    function _remainingLockTime(
+        IMlumStaking.StakingPosition memory position
+    ) internal view returns (uint256) {
+        uint256 blockTimestamp = block.timestamp;
+        if (
+            (position.startLockTime + position.lockDuration) <= blockTimestamp
+        ) {
+            return 0;
+        }
+        return
+            (position.startLockTime + position.lockDuration) - blockTimestamp;
+    }
+
+    function _notifyBribes(
+        uint256 periodId,
+        address pool,
+        address account,
+        uint256 deltaAmount
+    ) private {
         IBribeRewarder[] storage rewarders = _bribesPerPriod[periodId][pool];
         for (uint256 i = 0; i < rewarders.length; ++i) {
             if (address(rewarders[i]) != address(0)) {
-                rewarders[i].deposit(periodId, tokenId, deltaAmount);
-                _userBribesPerPeriod[periodId][tokenId].push(rewarders[i]);
+                rewarders[i].deposit(periodId, account, deltaAmount);
+                _userBribesPerPeriod[periodId][account].push(rewarders[i]);
             }
         }
-    }
-
-    function createFarms(address[] calldata pools) external onlyOwner {
-        uint256 farmLengths = _masterChef.getNumberOfFarms();
-        uint256 minimumVotes = _minimumVotesPerPool;
-        for (uint256 i = 0; i < pools.length; ++i) {
-            if (_votes.get(pools[i]) >= minimumVotes && !hasFarm(pools[i], farmLengths)) {
-                _masterChef.add(IERC20(pools[i]), IMasterChefRewarder(address(0)));
-            }
-        }
-    }
-
-    function hasFarm(address pool, uint256 farmLength) internal view returns (bool) {
-        for (uint256 i = 0; i < farmLength; ++i) {
-            if (address(_masterChef.getToken(i)) == pool) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
      * @dev Set farm pools with their weight;
      *
      * WARNING:
-     * Caller is responsible to updateAll oldPids on masterChef before using this function
-     * and also call updateAll for the new pids after.
+     * Caller is responsible to updateAll all pids on masterChef before using this function!
      *
      * @param pids - list of pids
      * @param weights - list of weights
      */
-    function setTopPoolIdsWithWeights(uint256[] calldata pids, uint256[] calldata weights) external {
+    function setTopPoolIdsWithWeights(
+        uint256[] calldata pids,
+        uint256[] calldata weights
+    ) external {
         if (msg.sender != _operator) _checkOwner();
 
         uint256 length = pids.length;
@@ -268,7 +319,7 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
         if (oldIds.length > 0) {
             // masterchef snould be updated beforehand
 
-            for (uint256 i = oldIds.length; i > 0;) {
+            for (uint256 i = oldIds.length; i > 0; ) {
                 uint256 pid = oldIds[--i];
 
                 _topPids.remove(pid);
@@ -297,7 +348,9 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
         emit TopPoolIdsWithWeightsSet(pids, weights);
     }
 
-    function updatePoolValidator(IVoterPoolValidator poolValidator) external onlyOwner {
+    function updatePoolValidator(
+        IVoterPoolValidator poolValidator
+    ) external onlyOwner {
         _poolValidator = poolValidator;
         emit VoterPoolValidatorUpdated(address(poolValidator));
     }
@@ -321,7 +374,10 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
      * @param periodId - period of the vote
      * @param pool - pool address
      */
-    function getVotesPerPeriod(uint256 periodId, address pool) external view override returns (uint256) {
+    function getVotesPerPeriod(
+        uint256 periodId,
+        address pool
+    ) external view override returns (uint256) {
         return _poolVotesPerPeriod[periodId][pool];
     }
 
@@ -336,14 +392,20 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
      * @dev Get accrued user votes for given tokenId and pool
      *
      */
-    function getUserVotes(uint256 tokenId, address pool) external view override returns (uint256) {
+    function getUserVotes(
+        uint256 tokenId,
+        address pool
+    ) external view override returns (uint256) {
         return _userVotes[tokenId][pool];
     }
 
     /**
      * @dev Get pool votes for given period
      */
-    function getPoolVotesPerPeriod(uint256 periodId, address pool) external view override returns (uint256) {
+    function getPoolVotesPerPeriod(
+        uint256 periodId,
+        address pool
+    ) external view override returns (uint256) {
         return _poolVotesPerPeriod[periodId][pool];
     }
 
@@ -371,7 +433,9 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
         return _votes.length();
     }
 
-    function getVotedPoolsAtIndex(uint256 index) external view returns (address, uint256) {
+    function getVotedPoolsAtIndex(
+        uint256 index
+    ) external view returns (address, uint256) {
         return _votes.at(index);
     }
 
@@ -395,37 +459,46 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
         return _weights[pid];
     }
 
-    function hasVoted(uint256 periodId, uint256 tokenId) external view override returns (bool) {
+    function hasVoted(
+        uint256 periodId,
+        uint256 tokenId
+    ) external view override returns (bool) {
         return _hasVotedInPeriod[periodId][tokenId];
     }
 
-    function ownerOf(uint256 tokenId, address account) external view returns (bool) {
+    function ownerOf(
+        uint256 tokenId,
+        address account
+    ) external view returns (bool) {
         return _mlumStaking.ownerOf(tokenId) == account;
     }
 
     /**
      * @dev get bribe rewarder at index
      */
-    function getUserBribeRewaderAt(uint256 period, uint256 tokenId, uint256 index)
+    function getUserBribeRewaderAt(uint256 period, address account, uint256 index)
         external
         view
         returns (IBribeRewarder)
     {
-        return _userBribesPerPeriod[period][tokenId][index];
+        return _userBribesPerPeriod[period][account][index];
     }
 
     /**
-     * Returns number of bribe rewarders for period and tokenId
+     * Returns number of bribe rewarders for period and account
      */
-    function getUserBribeRewarderLength(uint256 period, uint256 tokenId) external view returns (uint256) {
-        return _userBribesPerPeriod[period][tokenId].length;
+    function getUserBribeRewarderLength(uint256 period, address account) external view returns (uint256) {
+        return _userBribesPerPeriod[period][account].length;
     }
 
     /**
      * checks if rewarder registers on rewarderfactory
      */
     function _checkRegisterCaller(IBribeRewarder rewarder) internal view {
-        if (_rewarderFactory.getRewarderType(rewarder) != IRewarderFactory.RewarderType.BribeRewarder) {
+        if (
+            _rewarderFactory.getRewarderType(rewarder) !=
+            IRewarderFactory.RewarderType.BribeRewarder
+        ) {
             revert Voter__InvalidRegisterCaller();
         }
     }
@@ -436,12 +509,11 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
      * @param pool - pool address
      * @param index - index
      */
-    function getBribeRewarderAt(uint256 period, address pool, uint256 index)
-        external
-        view
-        override
-        returns (IBribeRewarder)
-    {
+    function getBribeRewarderAt(
+        uint256 period,
+        address pool,
+        uint256 index
+    ) external view override returns (IBribeRewarder) {
         return _bribesPerPriod[period][pool][index];
     }
 
@@ -450,7 +522,10 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
      * @param period - voting period id
      * @param pool - pool address
      */
-    function getBribeRewarderLength(uint256 period, address pool) external view override returns (uint256) {
+    function getBribeRewarderLength(
+        uint256 period,
+        address pool
+    ) external view override returns (uint256) {
         return _bribesPerPriod[period][pool].length;
     }
 
@@ -460,7 +535,9 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
      * @return startTime - periodStartTime
      * @return endTime - period endTime
      */
-    function getPeriodStartEndtime(uint256 periodId) external view override returns (uint256, uint256) {
+    function getPeriodStartEndtime(
+        uint256 periodId
+    ) external view override returns (uint256, uint256) {
         return (_startTimes[periodId].startTime, _startTimes[periodId].endTime);
     }
 
@@ -468,7 +545,12 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
      * @dev returns the latest ended period, either the period before the current period
      * or the current period if its ended. Reverts if no period is finished so far
      */
-    function getLatestFinishedPeriod() external view override returns (uint256) {
+    function getLatestFinishedPeriod()
+        external
+        view
+        override
+        returns (uint256)
+    {
         // the current period ended and no new period exists
         if (_votingEnded()) {
             return _currentVotingPeriodId;
@@ -522,7 +604,9 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
      * @dev update votes per pool
      * @param votesPerPool - minimum votes per pool got counted into farms
      */
-    function updateMinimumVotesPerPool(uint256 votesPerPool) external onlyOwner {
+    function updateMinimumVotesPerPool(
+        uint256 votesPerPool
+    ) external onlyOwner {
         // no check needed
         _minimumVotesPerPool = votesPerPool;
         emit MinimumVotesPerPoolUpdated(votesPerPool);
@@ -535,5 +619,23 @@ contract Voter is Ownable2StepUpgradeable, IVoter {
     function updateOperator(address operator) external onlyOwner {
         _operator = operator;
         emit OperatorUpdated(operator);
+    }
+
+    /**
+     * @dev Adds an elevated rewarder. Elevated rewarders are allowed to bribe beyond the bribe limit per pool and epoch.
+     * @param rewarder - rewarder address
+     */
+    function addElevatedRewarder(address rewarder) external onlyOwner {
+        _elevatedRewarders[rewarder] = true;
+        emit ElevatedRewarderAdded(address(rewarder));
+    }
+
+    /**
+     * @dev Removes an elevated rewarder.
+     * @param rewarder - rewarder address
+     */
+    function removeElevatedRewarder(address rewarder) external onlyOwner {
+        delete _elevatedRewarders[rewarder];
+        emit ElevatedRewarderRemoved(address(rewarder));
     }
 }

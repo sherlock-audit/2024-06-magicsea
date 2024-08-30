@@ -24,3 +24,11 @@ implementations: struct FarmDeployer.Addresses Addresses({ rewarderFactory: 0x64
 
 
 farmLens: contract FarmLens 0x97635fc30c89D35F60ae997081cE321251406239
+
+
+# verify
+
+forge verify-contract --chain-id 8822 --num-of-optimizations 800 \
+--compiler-version v0.8.20+commit.a1b79de6 0x464731fa072b1EF96C59CAC6449A076643E28d33 \
+--constructor-args $(cast abi-encode "constructor(address,address,address)" "0x34a85ddc4E30818e44e6f4A8ee39d8CBA9A60fB3" "0xcdCd9Da9901D40DEED65a03d51C8fD0256Bb0dDE" "0x370e2EfdF6e14eae9C4CdEfCe59BEE460672cD67" ) \
+./src/MasterchefV2.sol:MasterChef --watch

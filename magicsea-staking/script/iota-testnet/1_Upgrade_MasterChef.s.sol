@@ -3,18 +3,18 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
-import {ITransparentUpgradeableProxy} from "../src/transparent/TransparentUpgradeableProxy2Step.sol";
-import "../src/transparent/ProxyAdmin2Step.sol";
+import {ITransparentUpgradeableProxy} from "../../src/transparent/TransparentUpgradeableProxy2Step.sol";
+import "../../src/transparent/ProxyAdmin2Step.sol";
 
-import {ILum} from "../src/interfaces/ILum.sol";
-import {IVoter} from "../src/interfaces/IVoter.sol";
-import {IMlumStaking} from "../src/interfaces/IMlumStaking.sol";
-import {IRewarderFactory} from "../src/interfaces/IRewarderFactory.sol";
-import {IMasterChefRewarder} from "../src/interfaces/IMasterChefRewarder.sol";
+import {ILum} from "../../src/interfaces/ILum.sol";
+import {IVoter} from "../../src/interfaces/IVoter.sol";
+import {IMlumStaking} from "../../src/interfaces/IMlumStaking.sol";
+import {IRewarderFactory} from "../../src/interfaces/IRewarderFactory.sol";
+import {IMasterChefRewarder} from "../../src/interfaces/IMasterChefRewarder.sol";
 
 import {Addresses} from "./config/Addresses.sol";
 
-import "../src/MasterChefV2.sol";
+import "../../src/MasterChefV2.sol";
 
 /**
  *
@@ -39,7 +39,6 @@ contract Deployer is Script {
         vm.broadcast(pk);
         MasterChef masterChefImplementation = new MasterChef(
             ILum(Addresses.LUM_TESTNET),
-            IVoter(Addresses.PROXY_VOTER_TESTNET), // proxy
             IRewarderFactory(Addresses.PROXY_REWARDER_FACTORY_TESTNET), // proxy
             Addresses.LB_HOOKS_MANAGER,
             0.02e18

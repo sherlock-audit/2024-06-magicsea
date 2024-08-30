@@ -3,18 +3,18 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
-import {ITransparentUpgradeableProxy} from "../src/transparent/TransparentUpgradeableProxy2Step.sol";
-import "../src/transparent/ProxyAdmin2Step.sol";
+import {ITransparentUpgradeableProxy} from "../../src/transparent/TransparentUpgradeableProxy2Step.sol";
+import "../../src/transparent/ProxyAdmin2Step.sol";
 
-import {ILum} from "../src/interfaces/ILum.sol";
-import {IVoter} from "../src/interfaces/IVoter.sol";
-import {IMlumStaking} from "../src/interfaces/IMlumStaking.sol";
-import {IRewarderFactory} from "../src/interfaces/IRewarderFactory.sol";
-import {IMasterChefRewarder} from "../src/interfaces/IMasterChefRewarder.sol";
+import {ILum} from "../../src/interfaces/ILum.sol";
+import {IVoter} from "../../src/interfaces/IVoter.sol";
+import {IMlumStaking} from "../../src/interfaces/IMlumStaking.sol";
+import {IRewarderFactory} from "../../src/interfaces/IRewarderFactory.sol";
+import {IMasterChefRewarder} from "../../src/interfaces/IMasterChefRewarder.sol";
 
-import "../src/MasterChefV2.sol";
+import "../../src/MasterChefV2.sol";
 
-import "../src/FarmLens.sol";
+import "../../src/FarmLens.sol";
 
 import {Addresses} from "./config/Addresses.sol";
 

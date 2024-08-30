@@ -163,6 +163,8 @@ contract Booster is Ownable2StepUpgradeable, ReentrancyGuard {
     }
 
     constructor(IERC20 _rewardToken, IERC20 _stakedToken) {
+        _disableInitializers();
+
         rewardToken = _rewardToken;
         stakedToken = _stakedToken;
 
