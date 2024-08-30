@@ -8,7 +8,8 @@ import "openzeppelin-contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import {Ownable2StepUpgradeable} from "openzeppelin-contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {ERC721EnumerableUpgradeable} from
     "openzeppelin-contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
-
+import {ReentrancyGuardUpgradeable} from
+    "openzeppelin-contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {ReentrancyGuard} from "openzeppelin/utils/ReentrancyGuard.sol";
 import {EnumerableSet} from "openzeppelin/utils/structs/EnumerableSet.sol";
 import {SafeERC20, IERC20} from "openzeppelin/token/ERC20/utils/SafeERC20.sol";
@@ -19,7 +20,7 @@ import {IMlumStaking} from "./interfaces/IMlumStaking.sol";
 /**
  * @title MagicLum Staking
  * @author BlueLabs / MagicSea
- * @notice This pool allows users to stake a token and earn rewards. Rewards get distributed on a daily/weekly basis.
+ * @notice This pool allows users to stake token (MLUM) and earn rewards (e.g USDC). Rewards get distributed on a daily/weekly basis.
  * Users can get higher rewards on higher lock durations.
  *
  * For this, this contract wraps ERC20 assets into non-fungible staking positions called lsNFT
@@ -30,7 +31,7 @@ import {IMlumStaking} from "./interfaces/IMlumStaking.sol";
  */
 contract MlumStaking is
     Ownable2StepUpgradeable,
-    ReentrancyGuard,
+    ReentrancyGuardUpgradeable,
     IMlumStaking,
     ERC721Upgradeable,
     ERC721EnumerableUpgradeable
@@ -39,38 +40,33 @@ contract MlumStaking is
     using SafeERC20 for IERC20;
 
     // keeps tracks of the latest tokenId
-    uint256 public _tokenIdCounter;
-
-    EnumerableSet.AddressSet private _unlockOperators; // Addresses allowed to forcibly unlock locked spNFTs
-    address public _operator; // Used to delegate multiplier settings to project's owners
+    uint256 private _tokenIdCounter;
 
     // The precision factor
     uint256 public immutable PRECISION_FACTOR;
 
-    // The time of the last pool update
-    uint256 public _lastRewardTime;
-
     // last balance of reward token
-    uint256 public _lastRewardBalance;
+    uint256 private _lastRewardBalance;
 
     // The reward token
-    IERC20 public immutable rewardToken;
+    IERC20 private immutable _rewardToken;
 
     // The staked token
-    IERC20 public immutable stakedToken;
+    IERC20 private immutable _stakedToken;
 
     // keeps track about the total supply of staked tokens
     uint256 public _stakedSupply; // Sum of deposit tokens on this pool
     uint256 public _stakedSupplyWithMultiplier; // Sum of deposit token on this pool including the user's total multiplier (lockMultiplier + boostPoints)
     uint256 public _accRewardsPerShare; // Accumulated Rewards (staked token) per share, times PRECISION_FACTOR. See below
 
-    // readable via getMultiplierSettings
-    uint256 public constant MAX_GLOBAL_MULTIPLIER_LIMIT = 25000; // 250%, high limit for maxGlobalMultiplier (100 = 1%)
-    uint256 public constant MAX_LOCK_MULTIPLIER_LIMIT = 15000; // 150%, high limit for maxLockMultiplier (100 = 1%)
-    uint256 private _maxGlobalMultiplier = 20000; // 200%
+    // multiplier settings for lock times
+    uint256 public constant MAX_LOCK_MULTIPLIER_LIMIT = 20000; // 20000 (200%), high limit for maxLockMultiplier (100 = 1%)
 
-    uint256 private _maxLockDuration = 365 days; // 365 days, Capped lock duration to have the maximum bonus lockMultiplier
-    uint256 private _maxLockMultiplier = 20000; // 200%, Max available lockMultiplier (100 = 1%)
+    uint256 private _maxGlobalMultiplier; // eg. 20000 (200%)
+    uint256 private _maxLockDuration; // e.g. 365 days, Capped lock duration to have the maximum bonus lockMultiplier
+    uint256 private _maxLockMultiplier; // eg. 20000 (200%), Max available lockMultiplier (100 = 1%)
+
+    uint256 private _minimumLockDuration; // Minimum lock duration for creating a position
 
     bool public _emergencyUnlock; // Release all locks in case of emergency
 
@@ -79,17 +75,18 @@ contract MlumStaking is
 
     uint256[10] __gap;
 
-    constructor(IERC20 _stakedToken, IERC20 _rewardToken) {
+    constructor(IERC20 stakedToken, IERC20 rewardToken) {
         _disableInitializers();
 
-        require(address(_stakedToken) != address(0), "init: zero address");
-        require(address(_rewardToken) != address(0), "init: zero address");
+        if (address(stakedToken) == address(0)) revert IMlumStaking_ZeroAddress();
+        if (address(rewardToken) == address(0)) revert IMlumStaking_ZeroAddress();
+        if (address(stakedToken) == address(rewardToken)) revert IMlumStaking_SameAddress();
 
-        stakedToken = _stakedToken;
-        rewardToken = _rewardToken;
+        _stakedToken = stakedToken;
+        _rewardToken = rewardToken;
 
         uint256 decimalsRewardToken = uint256(IERC20Metadata(address(_rewardToken)).decimals());
-        require(decimalsRewardToken < 30, "Must be inferior to 30");
+        if (decimalsRewardToken > 30) revert IMlumStaking_TooMuchTokenDecimals();
 
         PRECISION_FACTOR = uint256(10 ** (uint256(30) - decimalsRewardToken));
 
@@ -100,101 +97,66 @@ contract MlumStaking is
      * @dev Initializes the contract.
      * @param initialOwner The initial owner of the contract.
      */
-    function initialize(address initialOwner) external reinitializer(2) {
+    function initialize(address initialOwner) external reinitializer(3) {
         __Ownable_init(initialOwner);
         __ERC721_init("Lock staking position NFT", "lsNFT");
 
         _maxGlobalMultiplier = 20000;
         _maxLockDuration = 365 days;
         _maxLockMultiplier = 20000;
-    }
-
-    // Events
-
-    event AddToPosition(uint256 indexed tokenId, address user, uint256 amount);
-    event CreatePosition(uint256 indexed tokenId, uint256 amount, uint256 lockDuration);
-    event WithdrawFromPosition(uint256 indexed tokenId, uint256 amount);
-    event EmergencyWithdraw(uint256 indexed tokenId, uint256 amount);
-    event LockPosition(uint256 indexed tokenId, uint256 lockDuration);
-    event HarvestPosition(uint256 indexed tokenId, address to, uint256 pending);
-    event PoolUpdated(uint256 lastRewardTime, uint256 accRewardsPerShare);
-    event SetLockMultiplierSettings(uint256 maxLockDuration, uint256 maxLockMultiplier);
-    event SetBoostMultiplierSettings(uint256 maxGlobalMultiplier, uint256 maxBoostMultiplier);
-    event SetUnlockOperator(address operator, bool isAdded);
-    event SetEmergencyUnlock(bool emergencyUnlock);
-    event SetOperator(address operator);
-
-    // Modifiers
-
-    /**
-     * @dev Check if caller has operator rights
-     */
-    function _requireOnlyOwner() internal view {
-        require(msg.sender == owner(), "FORBIDDEN");
-        // onlyOwner: caller is not the owner
-    }
-
-    /**
-     * @dev Check if a userAddress has privileged rights on a spNFT
-     */
-    function _requireOnlyOperatorOrOwnerOf(uint256 tokenId) internal view {
-        // isApprovedOrOwner: caller has no rights on token
-        require(ERC721Upgradeable._isAuthorized(msg.sender, msg.sender, tokenId), "FORBIDDEN");
-    }
-
-    /**
-     * @dev Check if a userAddress has privileged rights on a spNFT
-     */
-    function _requireOnlyApprovedOrOwnerOf(uint256 tokenId) internal view {
-        require(_ownerOf(tokenId) != address(0), "ERC721: operator query for nonexistent token");
-        require(_isOwnerOf(msg.sender, tokenId) || getApproved(tokenId) == msg.sender, "FORBIDDEN");
-    }
-
-    /**
-     * @dev Check if a msg.sender is owner of a spNFT
-     */
-    function _requireOnlyOwnerOf(uint256 tokenId) internal view {
-        require(_ownerOf(tokenId) != address(0), "ERC721: operator query for nonexistent token");
-        // onlyOwnerOf: caller has no rights on token
-        require(_isOwnerOf(msg.sender, tokenId), "not owner");
+        _minimumLockDuration = 7 days;
     }
 
     // public views
 
     /**
-     * @dev Returns the number of unlockOperators
-     */
-    function unlockOperatorsLength() external view returns (uint256) {
-        return _unlockOperators.length();
-    }
-
-    /**
-     * @dev Returns an unlockOperator from its "index"
-     */
-    function unlockOperator(uint256 index) external view returns (address) {
-        if (_unlockOperators.length() <= index) return address(0);
-        return _unlockOperators.at(index);
-    }
-
-    /**
-     * @dev Returns true if "operator" address is an unlockOperator
-     */
-    function isUnlockOperator(address operator) external view returns (bool) {
-        return _unlockOperators.contains(operator);
-    }
-
-    /**
      * @dev Returns true if "tokenId" is an existing spNFT id
+     * @param tokenId The id of the lsNFT
      */
-    function exists(uint256 tokenId) external view returns (bool) {
+    function exists(uint256 tokenId) external view override returns (bool) {
         return _ownerOf(tokenId) != address(0);
+    }
+
+    /**
+     * @dev Returns the staked token
+     */
+    function getStakedToken() external view override returns (IERC20) {
+        return _stakedToken;
+    }
+
+    /**
+     * @dev Returns the reward token
+     */
+    function getRewardToken() external view override returns (IERC20) {
+        return _rewardToken;
+    }
+
+    /**
+     * @dev Returns the last reward balance
+     */
+    function getLastRewardBalance() external view override returns (uint256) {
+        return _lastRewardBalance;
     }
 
     /**
      * @dev Returns last minted NFT id
      */
-    function lastTokenId() external view returns (uint256) {
+    function lastTokenId() external view override returns (uint256) {
         return _tokenIdCounter;
+    }
+
+    /**
+     * @dev Returns the total supply of staked tokens
+     */
+    function getStakedSupply() external view override returns (uint256) {
+        return _stakedSupply;
+    }
+
+    /**
+     * @dev Returns the total supply of staked tokens with multiplier
+     */
+    function getStakedSupplyWithMultiplier() external view override returns (uint256) {
+        return _stakedSupplyWithMultiplier;
     }
 
     /**
@@ -213,6 +175,8 @@ contract MlumStaking is
 
     /**
      * @dev Returns expected multiplier for a "lockDuration" duration lock (result is *1e4)
+     *
+     * @param lockDuration The lock duration
      */
     function getMultiplierByLockDuration(uint256 lockDuration) public view returns (uint256) {
         // in case of emergency unlock
@@ -221,9 +185,9 @@ contract MlumStaking is
         if (_maxLockDuration == 0 || lockDuration == 0) return 0;
 
         // capped to maxLockDuration
-        if (lockDuration >= _maxLockDuration) return _maxLockMultiplier;
+        if (lockDuration >= _maxLockDuration) return _maxLockMultiplier * 1e18;
 
-        return (_maxLockMultiplier * lockDuration) / (_maxLockDuration);
+        return (_maxLockMultiplier * lockDuration * 1e18) / (_maxLockDuration);
     }
 
     /**
@@ -242,7 +206,7 @@ contract MlumStaking is
         uint256 accRewardsPerShare = _accRewardsPerShare;
         uint256 stakedTokenSupply = _stakedSupply;
 
-        uint256 rewardBalance = rewardToken.balanceOf(address(this));
+        uint256 rewardBalance = _rewardToken.balanceOf(address(this));
 
         uint256 lastRewardBalance = _lastRewardBalance;
 
@@ -259,38 +223,47 @@ contract MlumStaking is
     // admin functions
 
     /**
+     * Return mutliplier settings
+     * @return maxGlobalMultiplier
+     * @return maxLockDuration
+     * @return maxLockMultiplier
+     */
+    function getMultiplierSettings() external view returns (uint256, uint256, uint256) {
+        return (_maxGlobalMultiplier, _maxLockDuration, _maxLockMultiplier);
+    }
+
+    /**
+     * Return minimum lock duration
+     */
+    function getMinimumLockDuration() external view returns (uint256) {
+        return _minimumLockDuration;
+    }
+
+    /**
      * @dev Set lock multiplier settings
      *
      * maxLockMultiplier must be <= MAX_LOCK_MULTIPLIER_LIMIT
-     * maxLockMultiplier must be <= _maxGlobalMultiplier - _maxBoostMultiplier
+     * maxLockMultiplier must be <= _maxGlobalMultiplier
      *
      * Must only be called by the owner
+     *
+     * @param maxLockDuration The new max lock duration
+     * @param maxLockMultiplier The new max lock multiplier
      */
-    function setLockMultiplierSettings(uint256 maxLockDuration, uint256 maxLockMultiplier) external {
-        require(msg.sender == owner() || msg.sender == _operator, "FORBIDDEN");
-        // onlyOperatorOrOwner: caller has no operator rights
-        require(maxLockMultiplier <= MAX_LOCK_MULTIPLIER_LIMIT, "too high");
-        // setLockSettings: maxGlobalMultiplier is too high
+    function setLockMultiplierSettings(uint256 maxLockDuration, uint256 maxLockMultiplier) external onlyOwner {
+        if (maxLockMultiplier > _maxGlobalMultiplier) revert IMlumStaking_MaxLockMultiplierTooHigh();
+        if (maxLockMultiplier > MAX_LOCK_MULTIPLIER_LIMIT) revert IMlumStaking_MaxLockMultiplierTooHigh();
+
         _maxLockDuration = maxLockDuration;
         _maxLockMultiplier = maxLockMultiplier;
 
         emit SetLockMultiplierSettings(maxLockDuration, maxLockMultiplier);
     }
 
-    /**
-     * @dev Add or remove unlock operators
-     *
-     * Must only be called by the owner
-     */
-    function setUnlockOperator(address operator, bool add) external {
-        _requireOnlyOwner();
+    function setMinimumLockDuration(uint256 minimumLockDuration) external onlyOwner {
+        _minimumLockDuration = minimumLockDuration;
 
-        if (add) {
-            _unlockOperators.add(operator);
-        } else {
-            _unlockOperators.remove(operator);
-        }
-        emit SetUnlockOperator(operator, add);
+        emit SetMinimumLockDuration(minimumLockDuration);
     }
 
     /**
@@ -298,47 +271,9 @@ contract MlumStaking is
      *
      * Must only be called by the owner
      */
-    function setEmergencyUnlock(bool emergencyUnlock_) external {
-        _requireOnlyOwner();
-
+    function setEmergencyUnlock(bool emergencyUnlock_) external onlyOwner {
         _emergencyUnlock = emergencyUnlock_;
         emit SetEmergencyUnlock(emergencyUnlock_);
-    }
-
-    /**
-     * @dev Set operator (usually deposit token's project's owner) to adjust contract's settings
-     *
-     * Must only be called by the owner
-     */
-    function setOperator(address operator_) external {
-        _requireOnlyOwner();
-
-        _operator = operator_;
-        emit SetOperator(operator_);
-    }
-
-    // Public functions
-
-    /**
-     * @dev Add nonReentrant to ERC721.transferFrom
-     */
-    function transferFrom(address from, address to, uint256 tokenId)
-        public
-        override(ERC721Upgradeable, IERC721)
-        nonReentrant
-    {
-        ERC721Upgradeable.transferFrom(from, to, tokenId);
-    }
-
-    /**
-     * @dev Add nonReentrant to ERC721.safeTransferFrom
-     */
-    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory _data)
-        public
-        override(ERC721Upgradeable, IERC721)
-        nonReentrant
-    {
-        ERC721Upgradeable.safeTransferFrom(from, to, tokenId, _data);
     }
 
     /**
@@ -354,21 +289,26 @@ contract MlumStaking is
     function createPosition(uint256 amount, uint256 lockDuration) external override nonReentrant {
         // no new lock can be set if the pool has been unlocked
         if (isUnlocked()) {
-            require(lockDuration == 0, "locks disabled");
+            if (lockDuration > 0) revert IMlumStaking_LocksDisabled();
         }
+
+        // check for the minimum lock duration
+        if (lockDuration < _minimumLockDuration) revert IMlumStaking_InvalidLockDuration();
 
         _updatePool();
 
         // handle tokens with transfer tax
-        amount = _transferSupportingFeeOnTransfer(stakedToken, msg.sender, amount);
-        require(amount != 0, "zero amount"); // createPosition: amount cannot be null
+        amount = _transferSupportingFeeOnTransfer(_stakedToken, msg.sender, amount);
+
+        // createPosition: amount cannot be null
+        if (amount == 0) revert IMlumStaking_ZeroAmount();
 
         // mint NFT position token
         uint256 currentTokenId = _mintNextTokenId(msg.sender);
 
         // calculate bonuses
         uint256 lockMultiplier = getMultiplierByLockDuration(lockDuration);
-        uint256 amountWithMultiplier = amount * (lockMultiplier + 1e4) / 1e4;
+        uint256 amountWithMultiplier = amount + (amount * lockMultiplier / 1e4) / 1e18;
 
         // create position
         _stakingPositions[currentTokenId] = StakingPosition({
@@ -376,7 +316,7 @@ contract MlumStaking is
             amount: amount,
             rewardDebt: amountWithMultiplier * (_accRewardsPerShare) / (PRECISION_FACTOR),
             lockDuration: lockDuration,
-            startLockTime: _currentBlockTimestamp(),
+            startLockTime: block.timestamp,
             lockMultiplier: lockMultiplier,
             amountWithMultiplier: amountWithMultiplier,
             totalMultiplier: lockMultiplier
@@ -395,8 +335,15 @@ contract MlumStaking is
      * Can only be called by lsNFT's owner or operators
      */
     function addToPosition(uint256 tokenId, uint256 amountToAdd) external override nonReentrant {
-        _requireOnlyOperatorOrOwnerOf(tokenId);
-        require(amountToAdd > 0, "0 amount"); // addToPosition: amount cannot be null
+        // on emergency unlock we dont allow staking
+        if (isUnlocked()) {
+            revert IMlumStaking_LocksDisabled();
+        }
+
+        _checkOwnerOf(tokenId);
+
+        // addToPosition: amount cannot be null
+        if (amountToAdd == 0) revert IMlumStaking_ZeroAmount();
 
         _updatePool();
         address nftOwner = ERC721Upgradeable.ownerOf(tokenId);
@@ -410,14 +357,14 @@ contract MlumStaking is
         uint256 avgDuration = (remainingLockTime * position.amount + amountToAdd * position.initialLockDuration)
             / (position.amount + amountToAdd);
 
-        position.startLockTime = _currentBlockTimestamp();
+        position.startLockTime = block.timestamp;
         position.lockDuration = avgDuration;
 
         // lock multiplier stays the same
         position.lockMultiplier = getMultiplierByLockDuration(position.initialLockDuration);
 
         // handle tokens with transfer tax
-        amountToAdd = _transferSupportingFeeOnTransfer(stakedToken, msg.sender, amountToAdd);
+        amountToAdd = _transferSupportingFeeOnTransfer(_stakedToken, msg.sender, amountToAdd);
 
         // update position
         position.amount = position.amount + amountToAdd;
@@ -428,19 +375,21 @@ contract MlumStaking is
     }
 
     function _remainingLockTime(StakingPosition memory position) internal view returns (uint256) {
-        if ((position.startLockTime + position.lockDuration) <= _currentBlockTimestamp()) {
+        uint256 blockTimestamp = block.timestamp;
+        if ((position.startLockTime + position.lockDuration) <= blockTimestamp) {
             return 0;
         }
-        return (position.startLockTime + position.lockDuration) - _currentBlockTimestamp();
+        return (position.startLockTime + position.lockDuration) - blockTimestamp;
     }
 
     /**
      * @dev Harvest from a staking position
      *
-     * Can only be called by spNFT's owner or approved address
+     * Can only be called by lsNFT's owner
+     * @param tokenId The id of the lsNFT
      */
     function harvestPosition(uint256 tokenId) external override nonReentrant {
-        _requireOnlyApprovedOrOwnerOf(tokenId);
+        _checkOwnerOf(tokenId);
 
         _updatePool();
         _harvestPosition(tokenId, ERC721Upgradeable.ownerOf(tokenId));
@@ -448,42 +397,21 @@ contract MlumStaking is
     }
 
     /**
-     * @dev Harvest from a staking position to "to" address
+     * @dev Harvest from multiple staking positions to the owner
      *
-     * Can only be called by lsNFT's owner or approved address
-     * lsNFT's owner must be a contract
-     */
-    function harvestPositionTo(uint256 tokenId, address to) external override nonReentrant {
-        _requireOnlyApprovedOrOwnerOf(tokenId);
-        // legacy: require(ERC721.ownerOf(tokenId).isContract(), "FORBIDDEN");
-
-        _updatePool();
-        _harvestPosition(tokenId, to);
-        _updateBoostMultiplierInfoAndRewardDebt(_stakingPositions[tokenId]);
-    }
-
-    /**
-     * @dev Harvest from multiple staking positions to "to" address
+     * Can only be called by lsNFT's owner
      *
-     * Can only be called by lsNFT's owner or approved address
+     * @param tokenIds The ids of the lsNFTs
      */
-    function harvestPositionsTo(uint256[] calldata tokenIds, address to) external override nonReentrant {
+    function harvestPositions(uint256[] calldata tokenIds) external override nonReentrant {
         _updatePool();
 
         uint256 length = tokenIds.length;
-
         for (uint256 i = 0; i < length; ++i) {
             uint256 tokenId = tokenIds[i];
-            _requireOnlyApprovedOrOwnerOf(tokenId);
-            address tokenOwner = ERC721Upgradeable.ownerOf(tokenId);
-            // if sender is the current owner, must also be the harvest dst address
-            // if sender is approved, current owner must be a contract
-            require(
-                (msg.sender == tokenOwner && msg.sender == to), // legacy || tokenOwner.isContract()
-                "FORBIDDEN"
-            );
-
-            _harvestPosition(tokenId, to);
+            // we check for ownership then harvest
+            _checkOwnerOf(tokenId);
+            _harvestPosition(tokenId, ERC721Upgradeable.ownerOf(tokenId));
             _updateBoostMultiplierInfoAndRewardDebt(_stakingPositions[tokenId]);
         }
     }
@@ -491,10 +419,12 @@ contract MlumStaking is
     /**
      * @dev Withdraw from a staking position
      *
-     * Can only be called by lsNFT's owner or approved address
+     * Can only be called by lsNFT's owner
+     * @param tokenId The id of the lsNFT
+     * @param amountToWithdraw The amount to withdraw
      */
     function withdrawFromPosition(uint256 tokenId, uint256 amountToWithdraw) external nonReentrant {
-        _requireOnlyApprovedOrOwnerOf(tokenId);
+        _checkOwnerOf(tokenId);
 
         _updatePool();
         address nftOwner = ERC721Upgradeable.ownerOf(tokenId);
@@ -502,27 +432,29 @@ contract MlumStaking is
     }
 
     /**
-     * @dev Renew lock from a staking position
+     * @dev Renew lock with the inital lock duration of a staking position
      *
-     * Can only be called by lsNFT's owner or approved address
+     * Can only be called by lsNFT's owner
+     *
+     * @param tokenId The id of the lsNFT
      */
     function renewLockPosition(uint256 tokenId) external nonReentrant {
-        _requireOnlyApprovedOrOwnerOf(tokenId);
+        _checkOwnerOf(tokenId);
 
         _updatePool();
-        _lockPosition(tokenId, _stakingPositions[tokenId].lockDuration, false);
+        _lockPosition(tokenId, _stakingPositions[tokenId].initialLockDuration, true);
     }
 
     /**
      * @dev Extends a lock position, lockDuration is the new lock duration
      * Lock duration must be greater than existing lock duration
-     * Can only be called by lsNFT's owner or approved address
+     * Can only be called by lsNFT's owner
      *
      * @param tokenId The id of the lsNFT
      * @param lockDuration The new lock duration
      */
     function extendLockPosition(uint256 tokenId, uint256 lockDuration) external nonReentrant {
-        _requireOnlyApprovedOrOwnerOf(tokenId);
+        _checkOwnerOf(tokenId);
 
         _updatePool();
         _lockPosition(tokenId, lockDuration, true);
@@ -532,19 +464,28 @@ contract MlumStaking is
      * Withdraw without caring about rewards, EMERGENCY ONLY
      *
      * Can only be called by lsNFT's owner
+     *
+     * @param tokenId The id of the lsNFT
      */
     function emergencyWithdraw(uint256 tokenId) external override nonReentrant {
-        _requireOnlyOwnerOf(tokenId);
+        _checkOwnerOf(tokenId);
 
         StakingPosition storage position = _stakingPositions[tokenId];
 
         // position should be unlocked
-        require(
-            _unlockOperators.contains(msg.sender)
-                || (position.startLockTime + position.lockDuration) <= _currentBlockTimestamp() || isUnlocked(),
-            "locked"
-        );
         // emergencyWithdraw: locked
+        if ((position.startLockTime + position.lockDuration) > block.timestamp && !isUnlocked()) {
+            revert IMlumStaking_PositionStillLocked();
+        }
+
+        // redistribute the rewards to the pool
+        {
+            _updatePool();
+
+            uint256 pending = position.amountWithMultiplier * _accRewardsPerShare / PRECISION_FACTOR - position.rewardDebt;
+
+            _lastRewardBalance = _lastRewardBalance - pending;
+        }
 
         uint256 amount = position.amount;
 
@@ -556,24 +497,17 @@ contract MlumStaking is
         _destroyPosition(tokenId);
 
         emit EmergencyWithdraw(tokenId, amount);
-        stakedToken.safeTransfer(msg.sender, amount);
+        _stakedToken.safeTransfer(msg.sender, amount);
     }
 
     // internal functions
-
-    /**
-     * @dev Returns whether "userAddress" is the owner of "tokenId" lsNFT
-     */
-    function _isOwnerOf(address userAddress, uint256 tokenId) internal view returns (bool) {
-        return userAddress == ERC721Upgradeable.ownerOf(tokenId);
-    }
 
     /**
      * @dev Updates rewards states of this pool to be up-to-date
      */
     function _updatePool() internal {
         uint256 accRewardsPerShare = _accRewardsPerShare;
-        uint256 rewardBalance = rewardToken.balanceOf(address(this));
+        uint256 rewardBalance = _rewardToken.balanceOf(address(this));
         uint256 lastRewardBalance = _lastRewardBalance;
 
         // recompute accRewardsPerShare if not up to date
@@ -582,19 +516,18 @@ contract MlumStaking is
         }
 
         uint256 accruedReward = rewardBalance - lastRewardBalance;
-        _accRewardsPerShare =
+        uint256 calcAccRewardsPerShare =
             accRewardsPerShare + ((accruedReward * (PRECISION_FACTOR)) / (_stakedSupplyWithMultiplier));
 
+        _accRewardsPerShare = calcAccRewardsPerShare;
         _lastRewardBalance = rewardBalance;
 
-        emit PoolUpdated(_currentBlockTimestamp(), accRewardsPerShare);
+        emit PoolUpdated(block.timestamp, calcAccRewardsPerShare);
     }
 
     /**
      * @dev Destroys lsNFT
-     *
-     * "boostPointsToDeallocate" is set to 0 to ignore boost points handling if called during an emergencyWithdraw
-     * Users should still be able to deallocate xGRAIL from the YieldBooster contract
+     * @param tokenId The id of the lsNFT
      */
     function _destroyPosition(uint256 tokenId) internal {
         // burn lsNFT
@@ -604,6 +537,7 @@ contract MlumStaking is
 
     /**
      * @dev Computes new tokenId and mint associated lsNFT to "to" address
+     * @param to The address to mint the lsNFT to
      */
     function _mintNextTokenId(address to) internal returns (uint256 tokenId) {
         _tokenIdCounter += 1;
@@ -615,19 +549,22 @@ contract MlumStaking is
      * @dev Withdraw from a staking position and destroy it
      *
      * _updatePool() should be executed before calling this
+     *
+     * @param nftOwner The owner of the lsNFT
+     * @param tokenId The id of the lsNFT
+     * @param amountToWithdraw The amount to withdraw
      */
     function _withdrawFromPosition(address nftOwner, uint256 tokenId, uint256 amountToWithdraw) internal {
-        require(amountToWithdraw > 0, "null");
         // withdrawFromPosition: amount cannot be null
+        if (amountToWithdraw == 0) revert IMlumStaking_ZeroAmount();
 
         StakingPosition storage position = _stakingPositions[tokenId];
-        require(
-            _unlockOperators.contains(nftOwner)
-                || (position.startLockTime + position.lockDuration) <= _currentBlockTimestamp() || isUnlocked(),
-            "locked"
-        );
-        // withdrawFromPosition: invalid amount
-        require(position.amount >= amountToWithdraw, "invalid");
+
+        if ((position.startLockTime + position.lockDuration) > block.timestamp && !isUnlocked()) {
+            revert IMlumStaking_PositionStillLocked();
+        }
+
+        if (position.amount < amountToWithdraw) revert IMlumStaking_AmountTooHigh();
 
         _harvestPosition(tokenId, nftOwner);
 
@@ -646,20 +583,22 @@ contract MlumStaking is
         }
 
         emit WithdrawFromPosition(tokenId, amountToWithdraw);
-        stakedToken.safeTransfer(nftOwner, amountToWithdraw);
+        _stakedToken.safeTransfer(nftOwner, amountToWithdraw);
     }
 
     /**
      * @dev updates position's boost multiplier, totalMultiplier, amountWithMultiplier (stakedSupplyWithMultiplier)
      * and rewardDebt without updating lockMultiplier
+     *
+     * @param position The staking position to update
      */
     function _updateBoostMultiplierInfoAndRewardDebt(StakingPosition storage position) internal {
         // keep the original lock multiplier and recompute current boostPoints multiplier
         uint256 newTotalMultiplier = position.lockMultiplier;
-        if (newTotalMultiplier > _maxGlobalMultiplier) newTotalMultiplier = _maxGlobalMultiplier;
+        if (newTotalMultiplier > _maxGlobalMultiplier * 1e18) newTotalMultiplier = _maxGlobalMultiplier * 1e18;
 
         position.totalMultiplier = newTotalMultiplier;
-        uint256 amountWithMultiplier = position.amount * (newTotalMultiplier + 1e4) / 1e4;
+        uint256 amountWithMultiplier = position.amount + (position.amount * newTotalMultiplier / 1e4) / 1e18;
         // update global supply
         _stakedSupplyWithMultiplier = _stakedSupplyWithMultiplier - position.amountWithMultiplier + amountWithMultiplier;
         position.amountWithMultiplier = amountWithMultiplier;
@@ -672,6 +611,8 @@ contract MlumStaking is
      * Will also update the position's totalMultiplier
      */
     function _harvestPosition(uint256 tokenId, address to) internal {
+        require(to != address(this), "MlumStaking: cannot harvest to this contract");
+
         StakingPosition storage position = _stakingPositions[tokenId];
 
         // compute position's pending rewards
@@ -687,27 +628,33 @@ contract MlumStaking is
 
     /**
      * @dev Renew lock from a staking position with "lockDuration"
+     *
+     * @param tokenId The id of the lsNFT
+     * @param lockDuration The new lock duration
+     * @param resetInitial If true, reset the initial lock duration
      */
     function _lockPosition(uint256 tokenId, uint256 lockDuration, bool resetInitial) internal {
-        require(!isUnlocked(), "locks disabled");
+        if (isUnlocked()) revert IMlumStaking_LocksDisabled();
 
         StakingPosition storage position = _stakingPositions[tokenId];
 
         // for renew only, check if new lockDuration is at least = to the remaining active duration
         uint256 endTime = position.startLockTime + position.lockDuration;
-        uint256 currentBlockTimestamp = _currentBlockTimestamp();
+        uint256 currentBlockTimestamp = block.timestamp;
         if (endTime > currentBlockTimestamp) {
-            require(lockDuration >= (endTime - currentBlockTimestamp) && lockDuration > 0, "invalid");
+            if (lockDuration == 0) revert IMlumStaking_InvalidLockDuration();
+            if (lockDuration < (endTime - currentBlockTimestamp)) revert IMlumStaking_InvalidLockDuration();
         }
 
         // for extend lock postion we reset the initial lock duration
         // we have to check that the lock duration is greater then the current
         if (resetInitial) {
-            require(lockDuration > position.initialLockDuration, "invalid");
+            if (lockDuration <= position.initialLockDuration) revert IMlumStaking_InvalidLockDuration();
             position.initialLockDuration = lockDuration;
         }
 
-        _harvestPosition(tokenId, msg.sender);
+        // harvest to nft owner before updating position
+        _harvestPosition(tokenId, ERC721Upgradeable.ownerOf(tokenId));
 
         // update position and total lp supply
         position.lockDuration = lockDuration;
@@ -720,6 +667,10 @@ contract MlumStaking is
 
     /**
      * @dev Handle deposits of tokens with transfer tax
+     *
+     * @param token The token to transfer
+     * @param user The user that will transfer the tokens
+     * @param amount The amount to transfer
      */
     function _transferSupportingFeeOnTransfer(IERC20 token, address user, uint256 amount)
         internal
@@ -737,14 +688,14 @@ contract MlumStaking is
      * @param _amount The amount to send to `_to`
      */
     function _safeRewardTransfer(address _to, uint256 _amount) internal {
-        uint256 rewardBalance = rewardToken.balanceOf(address(this));
+        uint256 rewardBalance = _rewardToken.balanceOf(address(this));
 
         if (_amount > rewardBalance) {
             _lastRewardBalance = _lastRewardBalance - rewardBalance;
-            rewardToken.safeTransfer(_to, rewardBalance);
+            _rewardToken.safeTransfer(_to, rewardBalance);
         } else {
             _lastRewardBalance = _lastRewardBalance - _amount;
-            rewardToken.safeTransfer(_to, _amount);
+            _rewardToken.safeTransfer(_to, _amount);
         }
     }
 
@@ -758,19 +709,22 @@ contract MlumStaking is
     {
         address from = _ownerOf(tokenId);
         if (from != address(0) && to != address(0)) {
-            revert("Forbidden: Transfer failed");
+            revert IMlumStaking_TransferNotAllowed();
         }
 
         return super._update(to, tokenId, auth);
     }
 
     /**
-     * @dev Utility function to get the current block timestamp
+     * @dev Require that the caller is the owner of the lsNFT
+     * @param tokenId The id of the lsNFT
      */
-    function _currentBlockTimestamp() internal view virtual returns (uint256) {
-        /* solhint-disable not-rely-on-time */
-        return block.timestamp;
+    function _checkOwnerOf(uint256 tokenId) internal view {
+        // check if sender is owner of tokenId
+        if (ERC721Upgradeable.ownerOf(tokenId) != msg.sender) revert IMlumStaking_NotOwner();
     }
+
+    // overrrides for solidity
 
     function supportsInterface(bytes4 interfaceId)
         public
@@ -787,4 +741,5 @@ contract MlumStaking is
     {
         super._increaseBalance(account, value);
     }
+
 }

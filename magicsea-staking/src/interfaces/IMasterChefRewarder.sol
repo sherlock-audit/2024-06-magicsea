@@ -17,4 +17,6 @@ interface IMasterChefRewarder is IBaseRewarder {
     function link(uint256 pid) external;
 
     function unlink(uint256 pid) external;
+
+    function onEmergency(address account, uint256 pid, uint256 oldBalance, uint256 newBalance, uint256 oldTotalSupply) external;
 }

@@ -161,6 +161,109 @@ contract VoterTest is Test {
         assertEq(1, pools.length);
     }
 
+    function testRevertVoteTwiceWithSameStake() public {
+        vm.prank(DEV);
+        _voter.updateMinimumLockTime(2 weeks);
+
+        _stakingToken.mint(ALICE, 1 ether);
+
+        vm.startPrank(ALICE);
+        _stakingToken.approve(address(_pool), 1 ether);
+        _pool.createPosition(1 ether, 2 weeks);
+        vm.stopPrank();
+
+        skip(1 weeks);
+
+        vm.prank(DEV);
+        _voter.startNewVotingPeriod();
+
+        vm.startPrank(ALICE);
+        vm.expectRevert(IVoter.IVoter__InsufficientLockTime.selector);
+        _voter.vote(1, _getDummyPools(), _getDeltaAmounts());
+        vm.stopPrank();
+
+        assertEq(_voter.getTotalVotes(), 0 ether);
+
+        skip(1 weeks + 1);
+
+        vm.startPrank(ALICE);
+        _pool.withdrawFromPosition(1, 1 ether);
+        vm.stopPrank();
+
+        vm.startPrank(ALICE);
+        vm.expectRevert();
+        _voter.vote(1, _getDummyPools(), _getDeltaAmounts());
+        _stakingToken.approve(address(_pool), 1 ether);
+        _pool.createPosition(1 ether, 2 weeks);
+        _voter.vote(2, _getDummyPools(), _getDeltaAmounts());
+        vm.stopPrank();
+
+        assertEq(_voter.getTotalVotes(), 1 ether);
+    }
+
+    function testRevertVoteTwiceWithSameStake_2() public {
+        vm.prank(DEV);
+        _voter.updateMinimumLockTime(2 weeks);
+
+        _stakingToken.mint(ALICE, 1 ether);
+
+        vm.startPrank(ALICE);
+        _stakingToken.approve(address(_pool), 1 ether);
+        _pool.createPosition(1 ether, 2 weeks);
+        vm.stopPrank();
+
+        skip(1 weeks);
+
+        vm.prank(DEV);
+        _voter.startNewVotingPeriod();
+
+        vm.startPrank(ALICE);
+        vm.expectRevert(IVoter.IVoter__InsufficientLockTime.selector);
+        _voter.vote(1, _getDummyPools(), _getDeltaAmounts());
+        vm.stopPrank();
+
+        assertEq(_voter.getTotalVotes(), 0 ether);
+
+        skip(1 weeks + 1);
+
+        vm.startPrank(ALICE);
+        _pool.withdrawFromPosition(1, 1 ether);
+        vm.stopPrank();
+
+        vm.startPrank(ALICE);
+        vm.expectRevert();
+        _voter.vote(1, _getDummyPools(), _getDeltaAmounts());
+        _stakingToken.approve(address(_pool), 1 ether);
+        _pool.createPosition(1 ether, 2 weeks);
+        _voter.vote(2, _getDummyPools(), _getDeltaAmounts());
+        vm.stopPrank();
+
+        assertEq(_voter.getTotalVotes(), 1 ether);
+    }
+
+    function testRevertOnEmergencyUnlock() public {
+        vm.prank(DEV);
+        _voter.updateMinimumLockTime(2 weeks);
+
+        _stakingToken.mint(ALICE, 1 ether);
+
+        vm.startPrank(ALICE);
+        _stakingToken.approve(address(_pool), 1 ether);
+        _pool.createPosition(1 ether, 2 weeks);
+        vm.stopPrank();
+
+        vm.prank(DEV);
+        _voter.startNewVotingPeriod();
+
+        vm.prank(DEV);
+        _pool.setEmergencyUnlock(true);
+
+        vm.startPrank(ALICE);
+        vm.expectRevert(IVoter.IVoter__EmergencyUnlock.selector);
+        _voter.vote(1, _getDummyPools(), _getDeltaAmounts());
+        vm.stopPrank();
+    }
+
     function _defaultVoteOnce(address user, bool newPeriod) internal {
         if (newPeriod) {
             vm.prank(DEV);

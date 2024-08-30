@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
+
 import {IRewarder} from "./IRewarder.sol";
 
 interface IBribeRewarder is IRewarder {
@@ -15,20 +17,23 @@ interface IBribeRewarder is IRewarder {
     error BribeRewarder__NotNativeRewarder();
     error BribeRewarder__AlreadyInitialized();
     error BribeRewarder__PeriodNotFound();
+    error BribeRewarder__AmountTooLow();
+    error BribeRewarder__OnlyVoterAdmin();
 
-    event Claimed(uint256 indexed tokenId, address indexed pool, uint256 amount);
-    event Deposited(uint256 indexed periodId, uint256 indexed tokenId, address indexed pool, uint256 amount);
+    event Claimed(address indexed account, address indexed pool, uint256 amount);
+    event Deposited(uint256 indexed periodId, address indexed account, address indexed pool, uint256 amount);
     event BribeInit(uint256 indexed startId, uint256 indexed lastId, uint256 amountPerPeriod);
+    event Swept(IERC20 indexed token, address indexed account, uint256 amount);
 
     function bribe(uint256 startId, uint256 lastId, uint256 amountPerPeriod) external;
 
-    function claim(uint256 tokenId) external;
+    function claim(address account) external;
 
-    function deposit(uint256 periodId, uint256 tokenId, uint256 deltaAmount) external;
+    function deposit(uint256 periodId, address account, uint256 deltaAmount) external;
 
     function getPool() external view returns (address);
 
-    function getPendingReward(uint256 tokenId) external view returns (uint256);
+    function getPendingReward(address account) external view returns (uint256);
 
     function getBribePeriods() external view returns (address pool, uint256[] memory);
 
@@ -37,4 +42,6 @@ interface IBribeRewarder is IRewarder {
     function getLastVotingPeriodId() external view returns (uint256);
 
     function getAmountPerPeriod() external view returns (uint256);
+
+    function sweep(IERC20 token, address account) external;
 }

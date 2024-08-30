@@ -6,12 +6,15 @@ import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {IMasterChefRewarder} from "../interfaces/IMasterChefRewarder.sol";
 import {IMasterChef} from "../interfaces/IMasterChef.sol";
 import {BaseRewarder, IBaseRewarder} from "./BaseRewarder.sol";
+import {Rewarder} from "../libraries/Rewarder.sol";
 
 /**
  * @title MasterChef Rewarder Contract
  * @dev Contract for distributing rewards to stakers in the MasterChef contract.
  */
 contract MasterChefRewarder is BaseRewarder, IMasterChefRewarder {
+    using Rewarder for Rewarder.Parameter;
+
     Status internal _status;
 
     /**
@@ -75,6 +78,31 @@ contract MasterChefRewarder is BaseRewarder, IMasterChefRewarder {
         reward = BaseRewarder.onModify(account, pid, oldBalance, newBalance, oldTotalSupply);
 
         _claim(account, reward);
+    }
+
+    /**
+     * @dev Called by the caller contract to update the rewards for a given account in an emergency.
+     * If the rewarder is not linked, the function will revert.
+     * @param account account to update rewards for
+     * @param pid The pool ID of the staking pool
+     * @param oldBalance The old balance of the account.
+     * @param newBalance The new balance of the account.
+     * @param oldTotalSupply The old total supply of the staking pool.
+     */
+    function onEmergency(address account, uint256 pid, uint256 oldBalance, uint256 newBalance, uint256 oldTotalSupply) public {
+        if (_status != Status.Linked) revert MasterChefRewarder__NotLinked();
+
+        if (msg.sender != _caller) revert BaseRewarder__InvalidCaller();
+        if (pid != _pid()) revert BaseRewarder__InvalidPid(pid);
+
+        uint256 totalRewards =
+            oldTotalSupply == 0 ? 0 : _rewarder.getTotalRewards(_rewardsPerSecond, _endTimestamp, oldTotalSupply);
+        uint256 rewards = _rewarder.update(account, oldBalance, newBalance, oldTotalSupply, totalRewards);
+
+        // redistribute rewards
+        _totalUnclaimedRewards = _totalUnclaimedRewards + totalRewards;
+
+        _rewarder.updateAccDebtPerShare(_getTotalSupply(), rewards);
     }
 
     /**

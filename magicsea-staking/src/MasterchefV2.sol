@@ -32,15 +32,16 @@ contract MasterChef is Ownable2StepUpgradeable, IMasterChef {
     using Amounts for Amounts.Parameter;
 
     ILum private immutable _lum;
-    IVoter private _voter; // TODO make immutable again
+
     IRewarderFactory private immutable _rewarderFactory;
+
     address private immutable _lbHooksManager;
 
     uint256 private immutable _treasuryShare;
 
+    IVoter private _voter;
+
     address private _treasury;
-    address private _gap0; // unused, but needed for the storage layout to be the same as the previous contract
-    address private _gap1; // unused, but needed for the storage layout to be the same as the previous contract
 
     uint96 private _lumPerSecond;
 
@@ -56,7 +57,7 @@ contract MasterChef is Ownable2StepUpgradeable, IMasterChef {
     /// pid => account => unclaimedRewards;
     mapping(uint256 => mapping(address => uint256)) private unclaimedRewards;
 
-    uint256[6] __gap;
+    uint256[10] __gap;
 
     modifier onlyTrusted() {
         if (_trustee == address(0)) revert MasterChef__TrusteeNotSet();
@@ -67,24 +68,16 @@ contract MasterChef is Ownable2StepUpgradeable, IMasterChef {
     /**
      * @dev Constructor for the MasterChef contract.
      * @param lum The address of the LUM token.
-     * @param voter The address of the VeMOE contract.
      * @param rewarderFactory The address of the rewarder factory.
      * @param lbHooksManager The address of the LB hooks manager.
      * @param treasuryShare The share of the rewards that will be sent to the treasury.
      */
-    constructor(
-        ILum lum,
-        IVoter voter,
-        IRewarderFactory rewarderFactory,
-        address lbHooksManager,
-        uint256 treasuryShare
-    ) {
+    constructor(ILum lum, IRewarderFactory rewarderFactory, address lbHooksManager, uint256 treasuryShare) {
         _disableInitializers();
 
         if (treasuryShare > Constants.PRECISION) revert MasterChef__InvalidShares();
 
         _lum = lum;
-        _voter = voter;
         _rewarderFactory = rewarderFactory;
         _lbHooksManager = lbHooksManager;
 
@@ -96,10 +89,12 @@ contract MasterChef is Ownable2StepUpgradeable, IMasterChef {
      * @param initialOwner The initial owner of the contract.
      * @param treasury The initial treasury.
      */
-    function initialize(address initialOwner, address treasury) external reinitializer(3) {
+    function initialize(address initialOwner, address treasury, IVoter voter) external reinitializer(4) {
         __Ownable_init(initialOwner);
 
         _setTreasury(treasury);
+
+        _voter = voter;
 
         _mintLUM = false;
     }
@@ -329,9 +324,26 @@ contract MasterChef is Ownable2StepUpgradeable, IMasterChef {
         uint256 balance = farm.amounts.getAmountOf(msg.sender);
         int256 deltaAmount = -balance.toInt256();
 
-        farm.amounts.update(msg.sender, deltaAmount);
+        // redistribute rewards
+        (uint256 oldBalance, uint256 newBalance, uint256 oldTotalSupply, uint256 newTotalSupply) = farm.amounts.update(msg.sender, deltaAmount);
+
+        uint256 totalLumRewardForPid = _getRewardForPid(farm.rewarder, pid, oldTotalSupply);
+        uint256 lumRewardForPid = _mintLum(totalLumRewardForPid);
+
+        uint256 lumReward = farm.rewarder.update(msg.sender, oldBalance, newBalance, oldTotalSupply, lumRewardForPid);
+        lumReward = lumReward + unclaimedRewards[pid][msg.sender];
+
+        unclaimedRewards[pid][msg.sender] = 0;
+
+        // update share
+        farm.rewarder.updateAccDebtPerShare(newTotalSupply, lumReward);
 
         farm.token.safeTransfer(msg.sender, balance);
+
+        IMasterChefRewarder extraRewarder = farm.extraRewarder;
+        if (address(extraRewarder) != address(0)) {
+            farm.extraRewarder.onEmergency(msg.sender, pid, oldBalance, newBalance, oldTotalSupply);
+        }
 
         emit PositionModified(pid, msg.sender, deltaAmount, 0);
     }
@@ -346,13 +358,11 @@ contract MasterChef is Ownable2StepUpgradeable, IMasterChef {
 
     /**
      * @dev Sets the LUM per second.
-     * It will update all the farms that are in the top pool IDs.
+     * You have to update all farms after setting the emission rate with updateAll function
      * @param lumPerSecond The new LUM per second.
      */
     function setLumPerSecond(uint96 lumPerSecond) external override onlyOwner {
         if (lumPerSecond > Constants.MAX_LUM_PER_SECOND) revert MasterChef__InvalidLumPerSecond();
-
-        // _updateAll(_voter.getTopPoolIds()); // todo remove this
 
         _lumPerSecond = lumPerSecond;
 
@@ -366,8 +376,6 @@ contract MasterChef is Ownable2StepUpgradeable, IMasterChef {
      */
     function add(IERC20 token, IMasterChefRewarder extraRewarder) external override {
         if (msg.sender != address(_lbHooksManager)) _checkOwnerOrOperator();
-
-        //_checkOwner(); // || msg.sender != address(_voter)
 
         uint256 pid = _farms.length;
 

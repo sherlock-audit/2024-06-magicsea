@@ -42,6 +42,9 @@ contract MlumStakingTest is Test {
                 )
             )
         );
+
+        vm.prank(DEV);
+        _pool.setMinimumLockDuration(1 days);
     }
 
     function testCreatePosition() public {
@@ -66,7 +69,7 @@ contract MlumStakingTest is Test {
         vm.expectRevert();
         _pool.withdrawFromPosition(1, 0.5 ether);
 
-        skip(1 days);
+        skip(1.1 days);
 
         _pool.withdrawFromPosition(1, 0.5 ether);
 
@@ -79,12 +82,12 @@ contract MlumStakingTest is Test {
 
         vm.startPrank(ALICE);
         _stakingToken.approve(address(_pool), 1 ether);
-        _pool.createPosition(1 ether, 1 days);
+        _pool.createPosition(1 ether, 2 days);
         vm.stopPrank();
 
         vm.startPrank(BOB);
         _stakingToken.approve(address(_pool), 4 ether);
-        _pool.createPosition(1 ether, 0.2 days);
+        _pool.createPosition(1 ether, 1.2 days);
         vm.stopPrank();
 
         // nothing is sent to contract -> reward = 0
@@ -179,5 +182,52 @@ contract MlumStakingTest is Test {
         _pool.withdrawFromPosition(1, 0.5 ether);
 
         assertEq(_stakingToken.balanceOf(ALICE), 1.5 ether);
+    }
+
+    function testStrangeMultiplier() public {
+        vm.prank(DEV);
+        _pool.setMinimumLockDuration(7 days);
+
+        _stakingToken.mint(ALICE, 200231242883985357276);
+
+        vm.startPrank(ALICE);
+        _stakingToken.approve(address(_pool), 100000000000000000000);
+        _pool.createPosition(100000000000000000000, 604800);
+        vm.stopPrank();
+
+        vm.startPrank(ALICE);
+        _stakingToken.approve(address(_pool), 100231242883985357276);
+        _pool.addToPosition(1, 100231242883985357276);
+        vm.stopPrank();
+
+        MlumStaking.StakingPosition memory position = _pool.getStakingPosition(1);
+
+        assertEq(position.amountWithMultiplier, 207911345350768357281);
+
+
+        _stakingToken.mint(BOB, 200231242883985357276);
+
+        vm.startPrank(BOB);
+        _stakingToken.approve(address(_pool), 200231242883985357276);
+        _pool.createPosition(200231242883985357276, 604800);
+        vm.stopPrank();
+
+        position = _pool.getStakingPosition(2);
+
+        assertEq(position.amountWithMultiplier, 207911345350768357281);
+    }
+
+    function testCtorRevert() public {
+        vm.expectRevert(IMlumStaking.IMlumStaking_ZeroAddress.selector);
+        new MlumStaking(IERC20(address(0)), _stakingToken);
+
+        vm.expectRevert(IMlumStaking.IMlumStaking_ZeroAddress.selector);
+        new MlumStaking(_rewardToken, IERC20(address(0)));
+
+        vm.expectRevert(IMlumStaking.IMlumStaking_SameAddress.selector);
+        new MlumStaking(_stakingToken, _stakingToken);
+
+        vm.expectRevert(IMlumStaking.IMlumStaking_SameAddress.selector);
+        new MlumStaking(_rewardToken, _rewardToken);
     }
 }
